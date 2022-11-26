@@ -8,6 +8,7 @@ class HasThread:
 
 
     def __init__(self, *args, target_name='run_thread_loop', start_immediately=True, **kwargs):
+        super().__init__(*args, **kwargs)
         self.stop_this_thread = threading.Event()
         self.thread = None
 

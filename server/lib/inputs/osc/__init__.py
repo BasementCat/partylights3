@@ -9,6 +9,7 @@ from pythonosc.osc_server import BlockingOSCUDPServer
 
 from lib import HasThread
 from lib.inputs import Input
+from lib.nodes import Node, NodeIO
 
 
 class OSCAddress:
@@ -82,7 +83,10 @@ class OSCFlavor:
         return addr(address, *args)
 
 
-class _OSCBlockingServer(HasThread):
+class _OSCBlockingServer(HasThread, Node):
+    NAME = "OSCServer"
+    DESCRIPTION = "OSC server"
+
     def __init__(self, osc_flavor, host='0.0.0.0', port=7000, *args, **kwargs):
         self.osc_flavor = osc_flavor
         self.host = host
@@ -90,14 +94,27 @@ class _OSCBlockingServer(HasThread):
         self.dispatcher = Dispatcher()
         self.dispatcher.set_default_handler(self.osc_handler)
         self.server = BlockingOSCUDPServer((self.host, self.port), self.dispatcher)
-        super().__init__(*args, **kwargs)
+
+        # Translate OSC events to outputs
+        self.OUTPUTS = []
+        for addr in osc_flavor.EVENTS:
+            # TODO: only one type is supported for outputs - fix this
+            self.OUTPUTS.append(NodeIO(addr.event, addr.event_args[0] if addr.event_args else float, is_array=len(addr.event_args) > 1, description=addr.description))
+
+        super().__init__(*args, name=f'osc({host}:{port})', **kwargs)
 
     def run_thread_loop(self):
         # This blocks forever - server.shutdown() is called externally when threads should exit & at that point the main thread loop will also exit
         self.server.serve_forever()
 
     def osc_handler(self, address, *args):
-        print(self.osc_flavor(address, *args))
+        event, event_args = self.osc_flavor(address, *args)
+        if len(event_args) == 1:
+            event_args = event_args[0]
+        elif len(event_args) == 0:
+            event_args = None
+        self.cache_outputs({event: event_args})
+        self.send_outputs(event)
 
 
 class OSCServerInput(Input):

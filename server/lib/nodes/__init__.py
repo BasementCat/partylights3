@@ -35,6 +35,11 @@ class Node:
 
         self.all_nodes[self.name] = self
 
+        self.setup()
+
+    def setup(self):
+        pass
+
     @classmethod
     def link(cls, src_node_name, output_name, dest_node_name, input_name):
         if isinstance(src_node_name, Node):

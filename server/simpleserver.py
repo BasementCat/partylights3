@@ -2,7 +2,12 @@ from threading import Thread, Event, Lock
 import time
 import signal
 import random
+import os
+import glob
+import subprocess
+import re
 
+from dmxpy.DmxPy import DmxPy
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import BlockingOSCUDPServer
 
@@ -54,6 +59,133 @@ class Transition:
             return {self.function: (pc * (self.to_value - self.from_value)) + self.from_value}
         else:
             return {'speed': self.speed, self.function: self.to_value}
+
+
+class DMX:
+    @staticmethod
+    def hexint(v):
+        return int(v, 16)
+
+    def __init__(self, device='0403:6001', debug=None):
+        # device can be a device path (/dev/ttyUSB0) or usb vid:pid (0403:6001)
+        # If debug is False, nothing is output, if true, data is always logged, if None, data is logged only if no device is found
+        self.device = device
+        self.debug = debug
+        self.last_find = None
+        self.dmx = None
+        self.data = {}
+
+        self.find_device()
+
+    def find_device(self):
+        if self.dmx or self.last_find is None or time.time() - self.last_find >= 1:
+            self.last_find = time.time()
+            try:
+                devfile = self._find_device_file(self.device)
+                if devfile:
+                    try:
+                        self.dmx = DmxPy(devfile)
+                    except:
+                        print("Can't open dmx device file:", devfile)
+            except:
+                pass
+
+    @classmethod
+    def _find_device_file__linux(cls, vendor, product):
+        if not os.path.exists('/sys') or not os.path.isdir('/sys'):
+            return None
+        for dev in glob.glob('/sys/bus/usb-serial/devices/*'):
+            devname = os.path.basename(dev)
+            with open(os.path.join(dev, '../uevent'), 'r') as fp:
+                for line in fp:
+                    line = line.strip()
+                    if line and '=' in line:
+                        param, value = line.split('=')
+                        if param == 'PRODUCT':
+                            testvendor, testproduct = map(cls.hexint, value.split('/')[:2])
+                            if testvendor == vendor and testproduct == product:
+                                return os.path.join('/dev', devname)
+
+    @classmethod
+    def _find_device_file__macos(cls, vendor, product):
+        devices = []
+        curdevice = {}
+
+        try:
+            res = subprocess.check_output(['ioreg', '-p', 'IOUSB', '-l', '-b']).decode('utf-8')
+        except FileNotFoundError:
+            # No ioreg - not macos
+            return
+
+        for line in res.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+
+            match = re.match(u'^\+-o (.+)\s+<', line)
+            if match:
+                if curdevice:
+                    devices.append(curdevice)
+                    curdevice = {}
+                continue
+
+            match = re.match(u'^[\|\s]*"([\w\d\s]+)"\s+=\s+(.+)$', line)
+            if match:
+                k, v = match.groups()
+                if v.startswith('"'):
+                    v = v[1:-1]
+                else:
+                    try:
+                        v = int(v)
+                    except:
+                        pass
+                curdevice[k] = v
+
+        if curdevice:
+            devices.append(curdevice)
+
+        for d in devices:
+            if d.get('idVendor') == vendor and d.get('idProduct') == product:
+                return '/dev/tty.usbserial-' + d['USB Serial Number']
+
+    @classmethod
+    def _find_device_file(cls, name):
+        # Name is either a path (/dev/ttyUSB0) which might change, or a device ID (0403:6001) which does not
+        if name.startswith('/') or ':' not in name:
+            # Assume file
+            return name
+
+        if ':' not in name:
+            raise ValueError(f"Not a valid device ID: {name}")
+
+        vendor, product = map(cls.hexint, name.split(':'))
+
+        for fn in (cls._find_device_file__linux, cls._find_device_file__macos):
+            try:
+                file = fn(vendor, product)
+                if file:
+                    return file
+            except Exception as e:
+                raise RuntimeError("Failure in find device file") from e
+
+        raise RuntimeError(f"Can't find USB device {name}")
+
+    def update(self, data):
+        self.data.update(data)
+
+    def set_channel(self, chan, value):
+        self.data[chan] = value
+
+    def render(self):
+        if self.data:
+            self.find_device()
+            if self.debug is True or (self.debug is None and not self.dmx):
+                print("DMX OUT:", self.data)
+            if self.dmx:
+                for k, v in self.data.items():
+                    self.dmx.setChannel(k, v)
+                self.dmx.render()
+                self.data = {}
 
 
 class OSCBlockingThread(Thread):
@@ -177,6 +309,39 @@ class ProcessThread(Thread):
         return data, resolved_state
 
 
+class OutputThread(Thread):
+    def __init__(self, process, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.process = process
+        self.last_dmx_state = {}
+        self.dmx = DMX(debug=False)
+
+    def run(self):
+        while not stop_event.is_set():
+            data, state = self.process.get_data()
+            # DEBUG
+            print(state)
+
+            dmx_speed = {}
+            dmx_state = {}
+            for light in Light.get():
+                if light.name in state:
+                    light.update_state(state[light.name])
+
+                if light.type.protocol == 'dmx':
+                    dmx_speed.update(light.get_dmx_state(speed_only=True))
+                    dmx_state.update(light.get_dmx_state())
+
+            if dmx_state != self.last_dmx_state:
+                old_speed = {k: self.last_dmx_state.get(k) for k in dmx_speed}
+                if old_speed != dmx_speed:
+                    self.dmx.update(dmx_speed)
+                    self.dmx.render()
+                self.dmx.update(dmx_state)
+                self.dmx.render()
+            self.last_dmx_state = dmx_state
+
+
 class LightTypeFunction:
     def __init__(self, name, speed=None, invert=False, reset=None, mapping=None):
         self.name = name
@@ -188,11 +353,15 @@ class LightTypeFunction:
     def resolve_to_raw(self, value):
         # TODO: support mapping based on state
         if isinstance(value, str) and value in self.mapping:
-            return self.mapping[value][0]
-        return value
+            out = self.mapping[value][0]
+        else:
+            out = value
+        if self.invert:
+            out = 1 - out
+        return out
 
     def resolve_to_float(self, value):
-        return self.resolve_to_raw(value)
+        return value
 
 
 class DMXLightTypeFunction(LightTypeFunction):
@@ -518,9 +687,8 @@ class Light:
     def __init__(self, name, type):
         self.name = name
         self.type = LightType.get(type) if isinstance(type, str) else type
+        self.state_lock = Lock()
         self.raw_state = {f: 0 for f in self.type.functions}
-        # TODO: set raw state
-        # TODO: convert
         self.converted_state = {f: 0 for f in self.type.functions}
 
     @classmethod
@@ -534,16 +702,38 @@ class Light:
             return cls.all_lights[key]
         return list(cls.all_lights.values())
 
+    def update_state(self, new_state):
+        with self.state_lock:
+            for k, v in new_state.items():
+                if k in self.raw_state:
+                    self.raw_state[k] = v
+
+            for k, v in self.raw_state.items():
+                self.converted_state[k] = self.type.functions[k].resolve_to_raw(v)
+
     def get_raw_state(self, key=None, dfl=None):
-        if key:
-            return self.raw_state.get(key, dfl)
-        return dict(self.raw_state)
+        with self.state_lock:
+            if key:
+                return self.raw_state.get(key, dfl)
+            return dict(self.raw_state)
+
+    def get_converted_state(self):
+        with self.state_lock:
+            return dict(self.converted_state)
 
 
 class DMXLight(Light):
     def __init__(self, name, channel, type):
         super().__init__(name, type)
         self.channel = channel
+
+    def get_dmx_state(self, speed_only=False):
+        state = self.get_converted_state()
+        out = {}
+        for k, v in state.items():
+            if not speed_only or k == 'speed':
+                out[self.channel + (self.type.functions[k].channel - 1)] = v
+        return out
 
 
 DMXLight.add('back_1', 1, 'UnnamedGobo')
@@ -821,12 +1011,16 @@ threads.append(osc)
 process = ProcessThread(osc, layers)
 threads.append(process)
 
+output = OutputThread(process)
+threads.append(output)
+
 for t in threads:
     t.start()
 
 while not stop_event.is_set():
-    data, state = process.get_data()
-    print(state)
+    # data, state = process.get_data()
+    # print(state)
+    time.sleep(1)
 
 for t in threads:
     t.join()

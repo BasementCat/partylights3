@@ -7,19 +7,40 @@ from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import BlockingOSCUDPServer
 
 
+MIN_BPM_CONF = 0.8
+
 stop_event = Event()
 
 
 class Transition:
-    def __init__(self, from_value, to_value, duration, start=None, cloned_from=None):
+    def __init__(self, light, function, from_value, to_value, duration, start=None, cloned_from=None):
+        self.function = function
         self.from_value = from_value
         self.to_value = to_value
         self.duration = duration
         self.cloned_from = cloned_from
         self.start = start or time.time()
+        self.speed = None
+        if light:
+            self.set_light(light)
 
-    def clone(self):
-        return Transition(self.from_value, self.to_value, self.duration, start=self.start, cloned_from=self)
+    def set_light(self, light):
+        if light.type.functions.get('speed') and light.type.functions.get(self.function, {}).speed:
+            high, low = light.type.functions[self.function].speed
+            speed = self.duration / (high - low)
+            self.speed = max(0, min(1, speed))
+        if self.from_value is None:
+            self.from_value = light.get_raw_state(self.function, 0)
+
+    def clone(self, light=None, **props):
+        kwargs = {
+            'function': self.function,
+            'from_value': self.from_value,
+            'to_value': self.to_value,
+            'duration': self.duration,
+        }
+        kwargs.update(props)
+        return Transition(light, start=self.start, cloned_from=self, **kwargs)
 
     @property
     def expired(self):
@@ -27,9 +48,12 @@ class Transition:
     
     def __call__(self):
         if self.expired:
-            return self.to_value
-        pc = (time.time() - self.start) / self.duration
-        return (pc * (self.to_value - self.from_value)) + self.from_value
+            return {self.function: self.to_value}
+        elif self.speed is None:
+            pc = (time.time() - self.start) / self.duration
+            return {self.function: (pc * (self.to_value - self.from_value)) + self.from_value}
+        else:
+            return {'speed': self.speed, self.function: self.to_value}
 
 
 class OSCBlockingThread(Thread):
@@ -99,7 +123,7 @@ class ProcessThread(Thread):
                             last_replace_layer = l
                         else:
                             for k, v in (lstate or {}).items():
-                                if isinstance(self.state[k], Transition) and not self.state[k].expired:
+                                if isinstance(self.state.get(k), Transition) and not self.state[k].expired:
                                     continue
                                 self.state[k] = v
                 if self.last_replace_layer is not last_replace_layer:
@@ -124,8 +148,7 @@ class ProcessThread(Thread):
                 if isinstance(current_v, Transition) and not current_v.expired:
                     continue
                 if isinstance(v, Transition):
-                    if v.from_value is None:
-                        v.from_value = light.get_raw_state(function, 0)
+                    v = v.clone(light)
                 self.expanded_state.setdefault(light_name, {})[function] = v
 
         # pass 2 - properties across all lights
@@ -138,13 +161,18 @@ class ProcessThread(Thread):
                     if isinstance(current_v, Transition) and not current_v.expired:
                         continue
                     if isinstance(v, Transition):
-                        if v.from_value is None:
-                            v = v.clone()
-                            v.from_value = light.get_raw_state(k, 0)
+                        v = v.clone(light)
                     self.expanded_state.setdefault(light_name, {})[k] = v
 
         # pass 3 - resolve any transitions in the expanded state
-        resolved_state = {light_name: {function: value() if isinstance(value, Transition) else value for function, value in functions.items()} for light_name, functions in self.expanded_state.items()}
+        resolved_state = {}
+        for light_name, functions in self.expanded_state.items():
+            resolved_state.setdefault(light_name, {})
+            for function, value in functions.items():
+                if isinstance(value, Transition):
+                    resolved_state[light_name].update(value())
+                else:
+                    resolved_state[light_name][function] = value
 
         return data, resolved_state
 
@@ -595,7 +623,16 @@ class DataLayer(Layer):
         self.dead_since = None
         self.idle_since = None
 
+        self.last_beat_clock = None
+        self.beat_counter = 0
+        self.measure = 0
+        self.phrase = 0
+
     def process(self, data, state):
+        self._timers(data)
+        self._beats(data)
+
+    def _timers(self, data):
         now = time.time()
         audio = data.get('/audio/level/all', 0)
 
@@ -614,6 +651,28 @@ class DataLayer(Layer):
             'idle_for': time.time() - self.idle_since if self.idle_since is not None else 0,
         })
 
+    def _beats(self, data):
+        data['exact_beat'] = False
+        if data.get('/audio/bpm/bpmconfidence', 0) < MIN_BPM_CONF:
+            self.last_beat_clock = None
+            self.beat_counter = 0
+            self.measure = 0
+            self.phrase = 0
+        elif data.get('/audio/beat/beattime', 0) != self.last_beat_clock:
+            data['exact_beat'] = True
+            self.last_beat_clock = data['/audio/beat/beattime']
+            self.beat_counter += 1
+            if self.beat_counter % 4 == 0:
+                self.measure += 1
+            if self.beat_counter % 16 == 0:
+                self.phrase += 1
+
+        data.update({
+            'measure_beat': (((self.beat_counter - 1) % 4) + 1) if self.beat_counter else 0,
+            'measure': self.measure,
+            'phrase': self.phrase,
+        })
+
 
 class IdleFadeout(Layer):
     def process(self, data, state):
@@ -621,7 +680,7 @@ class IdleFadeout(Layer):
         if idle >= 0.75:
             return {'dim': 0}
         elif idle >= 0.25:
-            return {'dim': Transition(None, 0, 0.5)}
+            return {'dim': Transition(None, 'dim', None, 0, 0.5)}
 
 
 class BaseCoastLayer(Layer):
@@ -639,13 +698,13 @@ class BaseCoastLayer(Layer):
         if duration < self.timeout:
             return
         elif duration < self.timeout + self.fade_transition:
-            return {'dim': Transition(None, self.dim, self.fade_transition)}
+            return {'dim': Transition(None, 'dim', None, self.dim, self.fade_transition)}
         else:
             out = {'dim': self.dim, 'speed': self.speed}
             now = time.time()
             for k in self.intervals:
                 for l in Light.get():
-                    out[l.name + '.' + k] = Transition(None, random.random(), self.intervals[k])
+                    out[l.name + '.' + k] = Transition(None, k, None, random.random(), self.intervals[k])
             return out
 
 
@@ -692,6 +751,51 @@ class AudioDim(Layer):
         return {'dim': 1, 'speed': 1}
 
 
+class Movement(Layer):
+    def _circle(self, data, position, radius, oval_pan=False, oval_tilt=False):
+        if oval_pan:
+            pan_prop = lambda: data.get('/audio/bpm/bpmsin4', 0)
+            tilt_prop = lambda: data.get('/audio/bpm/bpmtri2', 0)
+        elif oval_tilt:
+            pan_prop = lambda: data.get('/audio/bpm/bpmtri2', 0)
+            tilt_prop = lambda: data.get('/audio/bpm/bpmsin4', 0)
+        else:
+            pan_prop = lambda: data.get('/audio/bpm/bpmtri2', 0)
+            tilt_prop = lambda: data.get('/audio/bpm/bpmsin2', 0)
+
+        x, y = map(lambda v: v - radius, position)
+        diameter = radius * 2
+        pan_deg = x + (diameter * pan_prop())
+        tilt_deg = y + (diameter * tilt_prop())
+
+        # TODO: get from light
+        return {'pan': pan_deg / 540, 'tilt': tilt_deg / 180}
+
+    def _square(self, data, position, size):
+        if data['measure_beat'] == 0:
+            return False
+
+        x1, y1 = map(lambda v: v - (size / 2), position)
+        x2, y2 = map(lambda v: v + size, (x1, y1))
+        positions = (
+            (x1, y1),
+            (x2, y1),
+            (x2, y2),
+            (x1, y2),
+        )
+
+        # TODO: get from light
+        pan_deg, tilt_deg = positions[data['measure_beat'] - 1]
+        return {'pan': pan_deg / 540, 'tilt': tilt_deg / 180}
+
+    def process(self, data, state):
+        # TODO: use MIN_BPM_CONF to determine whether to run movements requiring sane beat detection
+        # return self._circle(data, (90, 120), 15)
+        res = self._square(data, (90, 120), 15)
+        if res:
+            return res
+
+
 def _sighandler(signo, frame):
     stop_event.set()
 
@@ -705,6 +809,7 @@ layers = [
     IdleCoast(True),
     DeadCoast(True),
     AudioDim(True),
+    Movement(False),
 ]
 
 

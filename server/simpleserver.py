@@ -942,7 +942,15 @@ class AudioDim(Layer):
 
 
 class Movement(Layer):
-    def _circle(self, data, position, radius, oval_pan=False, oval_tilt=False):
+    @staticmethod
+    def _remap_to_lights(lights, data):
+        out = {}
+        for l in lights:
+            for k, v in data:
+                out[l.name + '.' + k] = v
+        return out
+
+    def _circle(self, lights, data, position, radius, oval_pan=False, oval_tilt=False, **kwargs):
         if oval_pan:
             pan_prop = lambda: data.get('/audio/bpm/bpmsin4', 0)
             tilt_prop = lambda: data.get('/audio/bpm/bpmtri2', 0)
@@ -961,27 +969,72 @@ class Movement(Layer):
         # TODO: get from light
         return {'pan': pan_deg / 540, 'tilt': tilt_deg / 180}
 
-    def _square(self, data, position, size):
+    def _square(self, lights, data, position, size, hourglass=False, **kwargs):
         if data['measure_beat'] == 0:
             return False
 
         x1, y1 = map(lambda v: v - (size / 2), position)
         x2, y2 = map(lambda v: v + size, (x1, y1))
-        positions = (
-            (x1, y1),
-            (x2, y1),
-            (x2, y2),
-            (x1, y2),
-        )
+        if hourglass:
+            positions = (
+                (x1, y1),
+                (x2, y1),
+                (x1, y2),
+                (x2, y2),
+            )
+        else:
+            positions = (
+                (x1, y1),
+                (x2, y1),
+                (x2, y2),
+                (x1, y2),
+            )
 
         # TODO: get from light
         pan_deg, tilt_deg = positions[data['measure_beat'] - 1]
-        return {'pan': pan_deg / 540, 'tilt': tilt_deg / 180}
+        return {'speed': 1, 'pan': pan_deg / 540, 'tilt': tilt_deg / 180}
+
+    def _chase(self, lights, data, startpos, endpos, duration=None, setup=False, **kwargs):
+        if not duration:
+            bpm = data.get('/audio/bpm/bpm', 0)
+            if not bpm:
+                return
+            duration = (len(lights) - 1) * (60 / bpm)
+
+        """
+        if setup, position all lights at start
+        each beat:
+            current light:
+                dim 1
+                trans. to end over duration
+            current - 1:
+                dim 0
+                move to start ASAP
+            incr. current light
+        """
+
+
 
     def process(self, data, state):
         # TODO: use MIN_BPM_CONF to determine whether to run movements requiring sane beat detection
-        # return self._circle(data, (90, 120), 15)
-        res = self._square(data, (90, 120), 15)
+        # TODO: per light
+        """
+        bpm movements:
+            square & hourglass, but movement duration timed to beat
+            chase:
+                sweep ltr or something
+                fast: start of sweep corresponds w/ beat
+                slow: timing whatever, change color on beat, gobo on measure/phrase
+                at end of sweep, dim 0, reset pos, dim 1 on beat/at start
+            maybe make all work w/o bpm
+        change every 2 phrases or so
+        use idle - if idle, do nothing
+        """
+
+        # TODO: pass setup=True on switch to movement
+        lights = Light.get()
+        # return self._circle(lights, data, (90, 120), 15)
+        res = self._square(lights, data, (90, 120), 15)
         if res:
             return res
 

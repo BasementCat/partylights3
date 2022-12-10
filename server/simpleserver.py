@@ -12,7 +12,7 @@ from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import BlockingOSCUDPServer
 
 
-MIN_BPM_CONF = 0.8
+MIN_BPM_CONF = 0.5
 
 stop_event = Event()
 
@@ -73,7 +73,7 @@ class DMX:
         self.debug = debug
         self.last_find = None
         self.dmx = None
-        self.data = {}
+        self.data = {i + 1: 0 for i in range(512)}
 
         self.find_device()
 
@@ -183,7 +183,7 @@ class DMX:
                 print("DMX OUT:", self.data)
             if self.dmx:
                 for k, v in self.data.items():
-                    self.dmx.setChannel(k, v)
+                    self.dmx.set_channel(k, v)
                 self.dmx.render()
                 self.data = {}
 
@@ -737,14 +737,14 @@ class DMXLight(Light):
 
 
 DMXLight.add('back_1', 1, 'UnnamedGobo')
-# DMXLight.add('back_2', 12, 'UnnamedGobo')
-# DMXLight.add('mid_1', 23, 'UKingGobo')
-# DMXLight.add('mid_2', 34, 'UKingGobo')
-# DMXLight.add('mid_3', 45, 'UKingGobo')
-# DMXLight.add('mid_4', 56, 'UKingGobo')
-# DMXLight.add('front_1', 67, 'TomshineMovingHead6in1')
-# DMXLight.add('front_2', 85, 'TomshineMovingHead6in1')
-# DMXLight.add('laser', 103, 'Generic4ColorLaser')
+DMXLight.add('back_2', 12, 'UnnamedGobo')
+DMXLight.add('mid_1', 23, 'UKingGobo')
+DMXLight.add('mid_2', 34, 'UKingGobo')
+DMXLight.add('mid_3', 45, 'UKingGobo')
+DMXLight.add('mid_4', 56, 'UKingGobo')
+DMXLight.add('front_1', 67, 'TomshineMovingHead6in1')
+DMXLight.add('front_2', 85, 'TomshineMovingHead6in1')
+DMXLight.add('laser', 103, 'Generic4ColorLaser')
 
 
 class Layer:
@@ -818,6 +818,8 @@ class DataLayer(Layer):
         self.measure = 0
         self.phrase = 0
 
+        self.last_bass_hit = 0
+
     def process(self, data, state):
         self._timers(data)
         self._beats(data)
@@ -842,15 +844,27 @@ class DataLayer(Layer):
         })
 
     def _beats(self, data):
+        data['fakebeat'] = data.get('/audio/hits/bass', 0) >= 1
+        # self.last_bass_hit = data.get('/audio/hits/bass', 0)
+        # if self.last_bass_hit >= 1:
+        #     print(self.last_bass_hit)
+
         data['exact_beat'] = False
-        if data.get('/audio/bpm/bpmconfidence', 0) < MIN_BPM_CONF:
-            self.last_beat_clock = None
-            self.beat_counter = 0
-            self.measure = 0
-            self.phrase = 0
-        elif data.get('/audio/beat/beattime', 0) != self.last_beat_clock:
+        # if data.get('/audio/bpm/bpmconfidence', 0) < MIN_BPM_CONF:
+        #     self.last_beat_clock = None
+        #     self.beat_counter = 0
+        #     self.measure = 0
+        #     self.phrase = 0
+        # elif data.get('/audio/beat/beattime', 0) != self.last_beat_clock:
+        #     data['exact_beat'] = True
+        #     self.last_beat_clock = data['/audio/beat/beattime']
+        #     self.beat_counter += 1
+        #     if self.beat_counter % 4 == 0:
+        #         self.measure += 1
+        #     if self.beat_counter % 16 == 0:
+        #         self.phrase += 1
+        if data['fakebeat']:
             data['exact_beat'] = True
-            self.last_beat_clock = data['/audio/beat/beattime']
             self.beat_counter += 1
             if self.beat_counter % 4 == 0:
                 self.measure += 1
@@ -944,9 +958,11 @@ class AudioDim(Layer):
 class Movement(Layer):
     @staticmethod
     def _remap_to_lights(lights, data):
+        if not data:
+            return data
         out = {}
         for l in lights:
-            for k, v in data:
+            for k, v in data.items():
                 out[l.name + '.' + k] = v
         return out
 
@@ -1033,8 +1049,27 @@ class Movement(Layer):
 
         # TODO: pass setup=True on switch to movement
         lights = Light.get()
-        # return self._circle(lights, data, (90, 120), 15)
-        res = self._square(lights, data, (90, 120), 15)
+        # return self._circle(lights, data, (90, 120), 50)
+        # res = self._square(lights, data, (90, 120), 50)
+
+        # res = self._square(lights, data, (180, 160), 50)
+        # print(res)
+        res = {}
+        data = [
+            self._remap_to_lights([Light.get('mid_1')], self._square([Light.get('mid_1')], data, (200, 160), 50)),
+            self._remap_to_lights([Light.get('mid_2')], self._square([Light.get('mid_2')], data, (180, 160), 50)),
+            self._remap_to_lights([Light.get('mid_3')], self._square([Light.get('mid_3')], data, (160, 160), 50)),
+            self._remap_to_lights([Light.get('mid_4')], self._square([Light.get('mid_4')], data, (140, 160), 50)),
+        ]
+        # data = [
+        #     self._remap_to_lights([Light.get('mid_1')], self._circle([Light.get('mid_1')], data, (200, 160), 50)),
+        #     self._remap_to_lights([Light.get('mid_2')], self._circle([Light.get('mid_2')], data, (180, 160), 50)),
+        #     self._remap_to_lights([Light.get('mid_3')], self._circle([Light.get('mid_3')], data, (160, 160), 50)),
+        #     self._remap_to_lights([Light.get('mid_4')], self._circle([Light.get('mid_4')], data, (140, 160), 50)),
+        # ]
+        for d in data:
+            if d:
+                res.update(d)
         if res:
             return res
 

@@ -320,7 +320,7 @@ class OutputThread(Thread):
         while not stop_event.is_set():
             data, state = self.process.get_data()
             # DEBUG
-            print(state)
+            # print(state)
 
             dmx_speed = {}
             dmx_state = {}
@@ -818,8 +818,6 @@ class DataLayer(Layer):
         self.measure = 0
         self.phrase = 0
 
-        self.last_bass_hit = 0
-
     def process(self, data, state):
         self._timers(data)
         self._beats(data)
@@ -844,27 +842,15 @@ class DataLayer(Layer):
         })
 
     def _beats(self, data):
-        data['fakebeat'] = data.get('/audio/hits/bass', 0) >= 1
-        # self.last_bass_hit = data.get('/audio/hits/bass', 0)
-        # if self.last_bass_hit >= 1:
-        #     print(self.last_bass_hit)
-
         data['exact_beat'] = False
-        # if data.get('/audio/bpm/bpmconfidence', 0) < MIN_BPM_CONF:
-        #     self.last_beat_clock = None
-        #     self.beat_counter = 0
-        #     self.measure = 0
-        #     self.phrase = 0
-        # elif data.get('/audio/beat/beattime', 0) != self.last_beat_clock:
-        #     data['exact_beat'] = True
-        #     self.last_beat_clock = data['/audio/beat/beattime']
-        #     self.beat_counter += 1
-        #     if self.beat_counter % 4 == 0:
-        #         self.measure += 1
-        #     if self.beat_counter % 16 == 0:
-        #         self.phrase += 1
-        if data['fakebeat']:
+        if data.get('/audio/bpm/bpmconfidence', 0) < MIN_BPM_CONF:
+            self.last_beat_clock = None
+            self.beat_counter = 0
+            self.measure = 0
+            self.phrase = 0
+        elif data.get('/audio/beat/beattime', 0) != self.last_beat_clock:
             data['exact_beat'] = True
+            self.last_beat_clock = data['/audio/beat/beattime']
             self.beat_counter += 1
             if self.beat_counter % 4 == 0:
                 self.measure += 1
@@ -876,6 +862,32 @@ class DataLayer(Layer):
             'measure': self.measure,
             'phrase': self.phrase,
         })
+
+
+        bands = ((data.get(k, 0), k) for k in ('/audio/level/bass', '/audio/level/mid', '/audio/level/midhigh', '/audio/level/high'))
+        bands = list(sorted(bands, key=lambda b: b[0]))
+        data['dominant_band'] = bands[-1][1].split('/')[-1]
+
+        # if data.get('/audio/bpm/bpm') and data['idle_for'] >= ((60 / data.get('/audio/bpm/bpm', 0)) * 3) and data.get('/audio/hits/all', 0) >= 0.9:
+        #     print("DROP")
+
+        # test = 0
+        # for k, w in (('/audio/hits/bass', 4), ('/audio/hits/mid', 3), ('/audio/hits/midhigh', 2), ('/audio/hits/high', 1)):
+        #     if data.get(k, 0) >= 0.9:
+        #         test += w
+        # if test >= 8:
+        #     print("INTENSE")
+        # else:
+        #     print()
+        # # print("#" * test)
+
+        # print(data.get('/audio/time/curved', 0))
+        self.gobo = getattr(self, 'gobo', 0)
+        bass = data.get('/audio/hits/bass', 0)
+        bass = bass if bass >= 0.7 else 0
+        self.gobo += (bass / 12)
+        self.gobo %= 1
+        print(self.gobo)
 
 
 class IdleFadeout(Layer):
@@ -1010,24 +1022,24 @@ class Movement(Layer):
         pan_deg, tilt_deg = positions[data['measure_beat'] - 1]
         return {'speed': 1, 'pan': pan_deg / 540, 'tilt': tilt_deg / 180}
 
-    def _chase(self, lights, data, startpos, endpos, duration=None, setup=False, **kwargs):
-        if not duration:
-            bpm = data.get('/audio/bpm/bpm', 0)
-            if not bpm:
-                return
-            duration = (len(lights) - 1) * (60 / bpm)
+    # def _chase(self, lights, data, startpos, endpos, duration=None, setup=False, **kwargs):
+    #     if not duration:
+    #         bpm = data.get('/audio/bpm/bpm', 0)
+    #         if not bpm:
+    #             return
+    #         duration = (len(lights) - 1) * (60 / bpm)
 
-        """
-        if setup, position all lights at start
-        each beat:
-            current light:
-                dim 1
-                trans. to end over duration
-            current - 1:
-                dim 0
-                move to start ASAP
-            incr. current light
-        """
+    #     """
+    #     if setup, position all lights at start
+    #     each beat:
+    #         current light:
+    #             dim 1
+    #             trans. to end over duration
+    #         current - 1:
+    #             dim 0
+    #             move to start ASAP
+    #         incr. current light
+    #     """
 
 
 
@@ -1055,19 +1067,19 @@ class Movement(Layer):
         # res = self._square(lights, data, (180, 160), 50)
         # print(res)
         res = {}
-        data = [
-            self._remap_to_lights([Light.get('mid_1')], self._square([Light.get('mid_1')], data, (200, 160), 50)),
-            self._remap_to_lights([Light.get('mid_2')], self._square([Light.get('mid_2')], data, (180, 160), 50)),
-            self._remap_to_lights([Light.get('mid_3')], self._square([Light.get('mid_3')], data, (160, 160), 50)),
-            self._remap_to_lights([Light.get('mid_4')], self._square([Light.get('mid_4')], data, (140, 160), 50)),
-        ]
-        # data = [
-        #     self._remap_to_lights([Light.get('mid_1')], self._circle([Light.get('mid_1')], data, (200, 160), 50)),
-        #     self._remap_to_lights([Light.get('mid_2')], self._circle([Light.get('mid_2')], data, (180, 160), 50)),
-        #     self._remap_to_lights([Light.get('mid_3')], self._circle([Light.get('mid_3')], data, (160, 160), 50)),
-        #     self._remap_to_lights([Light.get('mid_4')], self._circle([Light.get('mid_4')], data, (140, 160), 50)),
+        # stuff = [
+        #     self._remap_to_lights([Light.get('mid_1')], self._square([Light.get('mid_1')], data, (200, 160), 50)),
+        #     self._remap_to_lights([Light.get('mid_2')], self._square([Light.get('mid_2')], data, (180, 160), 50)),
+        #     self._remap_to_lights([Light.get('mid_3')], self._square([Light.get('mid_3')], data, (160, 160), 50)),
+        #     self._remap_to_lights([Light.get('mid_4')], self._square([Light.get('mid_4')], data, (140, 160), 50)),
         # ]
-        for d in data:
+        stuff = [
+            self._remap_to_lights([Light.get('mid_1')], self._circle([Light.get('mid_1')], data, (200, 160), 50)),
+            self._remap_to_lights([Light.get('mid_2')], self._circle([Light.get('mid_2')], data, (180, 160), 50)),
+            self._remap_to_lights([Light.get('mid_3')], self._circle([Light.get('mid_3')], data, (160, 160), 50)),
+            self._remap_to_lights([Light.get('mid_4')], self._circle([Light.get('mid_4')], data, (140, 160), 50)),
+        ]
+        for d in stuff:
             if d:
                 res.update(d)
         if res:

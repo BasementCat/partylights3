@@ -1,5 +1,5 @@
 from lib.lights import DMXLightType, DMXLightTypeFunction, DMXLight
-from lib.data import Transition, Effect, Program, Scene, CircleMovementTransition
+from lib.data import Transition, Effect, Program, Scene, CircleMovementTransition, SquareMovementTransition, SweepMovementTransition
 
 
 DMXLightType('UnnamedGobo', 11, [
@@ -318,7 +318,9 @@ scene = Scene('testscene', [
     # ]),
     Program('movement', [
         Effect('move', [
-            CircleMovementTransition(180, 180, 20, 2, duration_beat=4, spread={'pan': 50}),
+            # CircleMovementTransition(180, 180, 20, 2, duration_beat=4, spread={'pan': 50}),
+            # SquareMovementTransition(180, 180, 20, 2, duration_beat=4, spread={'pan': 50}),
+            SweepMovementTransition(180, 220, None, 150, 2, duration_beat=4, spread={'x1': 50}),
         ])
     ])
 ])

@@ -138,7 +138,21 @@ class MovementTransition(Transition):
         raise NotImplementedError()
 
 
-class CircleMovementTransition(MovementTransition):
+class PanTiltSpreadMixin:
+    def _apply_spread(self, index, light, data, kwargs):
+        kwargs = super()._apply_spread(index, light, data, kwargs)
+        has_pan = bool(light.type.functions.get('pan') and light.type.functions.get('pan').meta.get('range_deg'))
+        has_tilt = bool(light.type.functions.get('tilt') and light.type.functions.get('tilt').meta.get('range_deg'))
+        if has_pan:
+            kwargs['pan'] = kwargs['pan'] % light.type.functions.get('pan').meta.get('range_deg')
+        if has_tilt:
+            kwargs['tilt'] = kwargs['tilt'] % light.type.functions.get('tilt').meta.get('range_deg')
+        # TODO: for circle, ideally would limit radius to avoid extending outside of the range
+        # TODO: for points, could more easily limit points to range
+        return kwargs
+
+
+class CircleMovementTransition(PanTiltSpreadMixin, MovementTransition):
     def __init__(self, pan, tilt, radius, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.pan = pan
@@ -154,18 +168,6 @@ class CircleMovementTransition(MovementTransition):
             'radius': self.radius,
         })
 
-        return kwargs
-
-    def _apply_spread(self, index, light, data, kwargs):
-        has_pan = bool(self.light.type.functions.get('pan') and self.light.type.functions.get('pan').meta.get('range_deg'))
-        has_tilt = bool(self.light.type.functions.get('tilt') and self.light.type.functions.get('tilt').meta.get('range_deg'))
-        if has_pan:
-            kwargs['pan'] = kwargs['pan'] % self.light.type.functions.get('pan').meta.get('range_deg')
-        if has_tilt:
-            kwargs['tilt'] = kwargs['tilt'] % self.light.type.functions.get('tilt').meta.get('range_deg')
-        # TODO: ideally would limit radius so it doesn't extend outside of the range given set pan/tilt
-        # if has_pan and has_tilt:
-        #     kwargs['radius'] = kwargs['radius']
         return kwargs
 
     def _copy(self, *args, **kwargs):
@@ -197,6 +199,126 @@ class CircleMovementTransition(MovementTransition):
             'pan': pan_deg / self.light.type.functions['pan'].meta['range_deg'],
             'tilt': tilt_deg / self.light.type.functions['tilt'].meta['range_deg'],
         }
+
+
+class PointsMovementTransition(MovementTransition):
+    def __init__(self, *args, start=0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.points = self._calc_points()
+        self.start = int(max(0, min(len(self.points), start)))
+
+    def _calc_points(self):
+        raise NotImplementedError("return a list of tuples of points, in degrees")
+
+    def _prep_to_copy(self, index, light, data):
+        kwargs = super()._prep_to_copy(index, light, data)
+
+        kwargs.update({
+            'start': self.start,
+        })
+
+        return kwargs
+
+    def _copy(self, *args, **kwargs):
+        return PointsMovementTransition(*args, **kwargs)
+
+    def __call__(self, data):
+        if not (self.light.type.functions.get('pan') and self.light.type.functions.get('pan').meta.get('range_deg') and self.light.type.functions.get('tilt') and self.light.type.functions.get('tilt').meta.get('range_deg')):
+            return
+        percent = min(1, self._calc_percent(data))
+        res = self._calc_short_circuit(data, percent)
+        if res is None:
+            return None
+        # In any other case we have to actually do the calculation
+
+        offset = min(len(self.points) - 1, int(percent * len(self.points)))
+        percent = min(1, (percent * len(self.points)) - offset)
+        point_i = (self.start + offset) % len(self.points)
+
+        x1, y1 = self.points[point_i]
+        x2, y2 = self.points[(point_i + 1) % len(self.points)]
+
+        mul, _ =self._calc_easing(data, percent)
+
+        pan_deg = ((x2 - x1) * mul) + x1
+        tilt_deg = ((y2 - y1) * mul) + y1
+
+        return {
+            'pan': pan_deg / self.light.type.functions['pan'].meta['range_deg'],
+            'tilt': tilt_deg / self.light.type.functions['tilt'].meta['range_deg'],
+        }
+
+
+class SquareMovementTransition(PanTiltSpreadMixin, PointsMovementTransition):
+    def __init__(self, pan, tilt, width, *args, height=None, swap_mid=False, **kwargs):
+        self.pan = pan
+        self.tilt = tilt
+        self.width = width
+        self.height = height or width
+        self.swap_mid = swap_mid
+        super().__init__(*args, **kwargs)
+
+    def _calc_points(self):
+        half_x = self.width / 2
+        half_y = self.height / 2
+        points = [
+            (self.pan - half_x, self.tilt - half_y),
+            (self.pan + half_x, self.tilt - half_y),
+            (self.pan - half_x, self.tilt + half_y),
+            (self.pan + half_x, self.tilt + half_y),
+        ]
+        if self.swap_mid:
+            points.append(points.pop[2])
+        return points
+
+    def _prep_to_copy(self, index, light, data):
+        kwargs = super()._prep_to_copy(index, light, data)
+
+        kwargs.update({
+            'pan': self.pan,
+            'tilt': self.tilt,
+            'width': self.width,
+            'height': self.height,
+            'swap_mid': self.swap_mid,
+        })
+
+        return kwargs
+
+    def _copy(self, *args, **kwargs):
+        return SquareMovementTransition(*args, **kwargs)
+
+
+class SweepMovementTransition(PointsMovementTransition):
+    def __init__(self, x1, y1, x2, y2, *args, **kwargs):
+        if x2 is None and y2 is None:
+            raise ValueError("must provide x2 or y2")
+        self.x1 = x1
+        self.y1 = y1
+        self.x2 = x2 or x1
+        self.y2 = y2 or y1
+        super().__init__(*args, **kwargs)
+
+    def _calc_points(self):
+        points = [
+            (self.x1, self.y1),
+            (self.x2, self.y2),
+        ]
+        return points
+
+    def _prep_to_copy(self, index, light, data):
+        kwargs = super()._prep_to_copy(index, light, data)
+
+        kwargs.update({
+            'x1': self.x1,
+            'y1': self.y1,
+            'x2': self.x2,
+            'y2': self.y2,
+        })
+
+        return kwargs
+
+    def _copy(self, *args, **kwargs):
+        return SweepMovementTransition(*args, **kwargs)
 
 
 class Effect(Named, ListOf(Transition)):

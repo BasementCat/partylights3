@@ -4,12 +4,10 @@ import time
 
 class HasThread:
     all_threads = []
-    stop_threads = threading.Event()
-
 
     def __init__(self, *args, target_name='run_thread_loop', start_immediately=True, **kwargs):
         super().__init__(*args, **kwargs)
-        self.stop_this_thread = threading.Event()
+        self.stop_thread = threading.Event()
         self.thread = None
 
         if not hasattr(self, target_name):
@@ -21,22 +19,37 @@ class HasThread:
         if start_immediately:
             self.start()
 
+    def setup_main(self):
+        pass
+
+    def setup_thread(self):
+        pass
+
+    def teardown_main(self):
+        pass
+
+    def teardown_thread(self):
+        pass        
+
     def start(self):
         if self.thread:
+            self.setup_main()
             self.thread.start()
 
     def stop(self, join=True):
-        self.stop_this_thread.set()
+        self.stop_thread.set()
         if join:
             self.join()
 
     def join(self):
         if self.thread:
             self.thread.join()
+            self.teardown_main()
 
     @classmethod
     def stop_all(cls, join=True):
-        cls.stop_threads.set()
+        for t in cls.all_threads:
+            t.stop(join=False)
         if join:
             cls.join_all()
 
@@ -45,12 +58,14 @@ class HasThread:
         for t in cls.all_threads:
             t.join()
 
-    # def run_thread_loop(self):
-    #   time.sleep(1)
+    def run_thread_loop(self):
+      time.sleep(1)
 
     def run_thread(self):
-        while not (self.stop_threads.is_set() or self.stop_this_thread.is_set()):
+        self.setup_thread()
+        while not self.stop_thread.is_set():
             self.target_loop()
+        self.teardown_thread()
 
 
 def ListOf(type_):

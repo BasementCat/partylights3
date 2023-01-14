@@ -1,6 +1,6 @@
 from threading import Lock
 
-from . import Named, Collected
+from . import Named, Collected, Grouped
 
 
 class LightTypeFunction(Named):
@@ -124,7 +124,7 @@ class DMXLightType(LightType):
         self.channels = channels
 
 
-class Light(Named, Collected()):
+class Light(Named, Grouped, Collected()):
     def __init__(self, name, type, *args, **kwargs):
         super().__init__(name, *args, **kwargs)
         self.name = name

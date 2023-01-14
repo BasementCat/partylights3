@@ -25,6 +25,7 @@ try:
     while not do_terminate:
         lights = Light.get(aslist=True)
         data = Input.get_data(timeout=0.01)
+        controller.run_triggers(data)
         print(controller(data, lights))
 finally:
     HasThread.stop_all()

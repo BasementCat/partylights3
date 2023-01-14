@@ -1,6 +1,7 @@
 import time
 import colorsys
 import math
+import random
 
 import easing_functions
 
@@ -24,6 +25,12 @@ def HasTriggers(*names):
         def __init__(self, *args, **kwargs):
             self.triggers = {n: kwargs.pop('trigger_' + n, None) or [] for n in names}
             super().__init__(*args, **kwargs)
+
+        def run_triggers(self, data):
+            for name, triggers in self.triggers.items():
+                if Trigger.run_trigger_group(data, triggers):
+                    yield name
+
     return HasTriggersImpl
 
 
@@ -373,14 +380,84 @@ class Effect(Named, HasTriggers('select', 'run'), ListOf(Transition)):
 
 
 class Program(Named, HasTriggers('run', 'stop', 'select', 'next', 'prev', 'random'), ListOf(Effect)):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, multiple=False, start=True, autoplay=True, **kwargs):
         super().__init__(*args, **kwargs)
-        self.current_effect_idx = 0 if len(self) else None
-        self.running_effect = None
+        self.multiple = multiple
+        if self.multiple:
+            self.pending_effects = {}
+            self.running_effects = {}
+        else:
+            self.current_effect_idx = 0 if len(self) else None
+            self.running_effect = None
+            self.is_running = start
+            self.autoplay = autoplay
+            self.play_next = False
 
-    def __call__(self, data, lights):
+    def _run_triggers__single(self, data):
+        selected = None
+        for idx, effect in enumerate(self):
+            for name in effect.run_triggers(data):
+                if selected is None and name == 'select':
+                    selected = idx
+
+        if selected is not None:
+            self.running_effect = None
+            self.current_effect_idx = selected
+
+        for name in super().run_triggers(data):
+            if name == 'run':
+                self.is_running = True
+            elif name == 'stop':
+                self.is_running = False
+            elif name == 'select':
+                yield name
+            elif name == 'next':
+                self.running_effect = None
+                self.current_effect_idx = (self.current_effect_idx + 1) % len(self)
+                self.play_next = True
+            elif name == 'prev':
+                self.running_effect = None
+                self.current_effect_idx = (self.current_effect_idx - 1) % len(self)
+                self.play_next = True
+            elif name == 'random':
+                self.running_effect = None
+                self.current_effect_idx = random.randint(0, len(self) - 1)
+                self.play_next = True
+
+    def _run_triggers__multi(self, data):
+        for idx, effect in enumerate(self):
+            for name in effect.run_triggers(data):
+                if name == 'run':
+                    if idx not in self.pending_effects and idx not in self.running_effects:
+                        self.pending_effects[idx] = effect
+
+        for name in super().run_triggers(data):
+            # next/prev do not apply here
+            if name == 'run':
+                self.is_running = True
+            elif name == 'stop':
+                self.is_running = False
+            elif name == 'select':
+                yield name
+            elif name == 'random':
+                choices = set(range(len(self))) - set(list(self.pending_effects.keys()) + list(self.running_effects.keys()))
+                if choices:
+                    idx = random.choice(choices)
+                    self.pending_effects[idx] = self[idx]
+
+
+    def run_triggers(self, data):
+        if self.multiple:
+            yield from self._run_triggers__multi(data)
+        else:
+            yield from self._run_triggers__single(data)
+
+    def _call__single(self, data, lights):
         if not len(self):
             self.current_effect_idx = self.running_effect = None
+            return {}
+
+        if not self.is_running:
             return {}
 
         if self.current_effect_idx is None:
@@ -388,15 +465,60 @@ class Program(Named, HasTriggers('run', 'stop', 'select', 'next', 'prev', 'rando
 
         if self.running_effect is not None and not self.running_effect.is_running:
             self.running_effect = None
-            self.current_effect_idx = (self.current_effect_idx + 1) % len(self)
+            if self.autoplay:
+                self.current_effect_idx = (self.current_effect_idx + 1) % len(self)
 
         if self.running_effect is None:
-            self.running_effect = self[self.current_effect_idx].for_lights(data, lights)
+            if self.autoplay or self.play_next:
+                self.play_next = False
+                self.running_effect = self[self.current_effect_idx].for_lights(data, lights)
+            else:
+                return {}
 
         return self.running_effect(data)
 
+    def _call__multi(self, data, lights):
+        for k, v in list(self.running_effects.items()):
+            if not v.is_running:
+                del self.running_effects[k]
+
+        if not (self.is_running and (self.pending_effects or self.running_effects)):
+            return {}
+
+        for k, v in self.pending_effects.items():
+            self.running_effects[k] = v.for_lights(data, lights)
+        self.pending_effects = {}
+
+        out = {}
+        for effect in self.running_effects.values():
+            for light, values in effect(data).items():
+                out.setdefault(light, {}).update(values)
+
+        return out
+
+    def __call__(self, data, lights):
+        if self.multiple:
+            return self._call__multi(data, lights)
+        else:
+            return self._call__single(data, lights)
+
 
 class Scene(Named, HasTriggers('select'), ListOf(Program)):
+    def run_triggers(self, data):
+        selected = None
+        for idx, prog in enumerate(self):
+            for name in prog.run_triggers(data):
+                if selected is None and name == 'select':
+                    selected = idx
+
+        if selected is not None:
+            for idx, prog in enumerate(self):
+                if prog.autoplay:
+                    prog.is_running = idx == selected
+
+        # can only do select - pass up to controller
+        yield from super().run_triggers(data)
+
     def __call__(self, data, lights):
         out = {}
         for program in self:
@@ -409,6 +531,24 @@ class SceneController(HasTriggers('next', 'prev', 'random'), ListOf(Scene)):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.current_scene_idx = 0 if len(self) else None
+
+    def run_triggers(self, data):
+        selected = None
+        for idx, scene in enumerate(self):
+            for name in scene.run_triggers(data):
+                if selected is None and name == 'select':
+                    selected = idx
+
+        if selected is not None:
+            self.current_scene_idx = selected
+
+        for name in super().run_triggers(data):
+            if name == 'next':
+                self.current_scene_idx = (self.current_scene_idx + 1) % len(self)
+            elif name == 'prev':
+                self.current_scene_idx = (self.current_scene_idx - 1) % len(self)
+            elif name == 'random':
+                self.current_scene_idx = random.randint(0, len(self) - 1)
 
     def __call__(self, data, lights):
         if not len(self):

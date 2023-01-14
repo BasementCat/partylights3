@@ -140,3 +140,21 @@ def Collected(key='name', allow_none=False):
             return dict(cls.COLLECTION)
 
     return CollectedBy
+
+
+class Grouped:
+    def __init__(self, *args, groups=None, **kwargs):
+        self.groups = groups or []
+        super().__init__(*args, **kwargs)
+
+    @classmethod
+    def get_by_groups(cls, *groups, any=False):
+        if not issubclass(cls, Collected):
+            raise RuntimeError(f'{cls.__name__} is not a subclass of Collected')
+        for item in cls.get(aslist=True):
+            if any:
+                if set(groups) & set(item.groups):
+                    yield item
+            else:
+                if not set(groups) - set(item.groups):
+                    yield item

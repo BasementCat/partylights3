@@ -290,23 +290,50 @@ DMXLightType('Generic4ColorLaser', 7, [
     DMXLightTypeFunction('pattern_size', 7),
 ])
 
+DMXLightType('OPPSK_RGBWPar', 8, [
+    DMXLightTypeFunction('dim', 1),
+    DMXLightTypeFunction('rgb', None, map_multi=('red', 'green', 'blue')),
+    DMXLightTypeFunction('red', 2),
+    DMXLightTypeFunction('green', 3),
+    DMXLightTypeFunction('blue', 4),
+    DMXLightTypeFunction('white', 5),
+    DMXLightTypeFunction('strobe_mode', 6, mapping={
+        'par_strobe': [0, 99],
+        'par': [100, 199],
+        'strobe': [200, 255],
+    }),
+    DMXLightTypeFunction('strobe', 7, invert=True),
+    DMXLightTypeFunction('mode', 8, mapping={
+        'manual': [0, 50],
+        'jump': [51, 100],
+        'gradual': [101, 150],
+        'pulse': [151, 200],
+        'auto': [201, 250],
+        'sound': [251, 255],
+    }),
+])
+
 # TODO: that other multi-light
 # TODO: 2nd laser
-# TODO: uplights
 # TODO: hue
 
 
 
 
-DMXLight('back_1', 1, 'UnnamedGobo')
-DMXLight('back_2', 12, 'UnnamedGobo')
-DMXLight('mid_1', 23, 'UKingGobo')
-DMXLight('mid_2', 34, 'UKingGobo')
-DMXLight('mid_3', 45, 'UKingGobo')
-DMXLight('mid_4', 56, 'UKingGobo')
-DMXLight('front_1', 67, 'TomshineMovingHead6in1')
-DMXLight('front_2', 85, 'TomshineMovingHead6in1')
-DMXLight('laser', 103, 'Generic4ColorLaser')
+DMXLight('back_1', 1, 'UnnamedGobo', groups=['back', 'gobo', 'moving'])
+DMXLight('back_2', 12, 'UnnamedGobo', groups=['back', 'gobo', 'moving'])
+DMXLight('mid_1', 23, 'UKingGobo', groups=['mid', 'gobo', 'moving', 'mid_a'])
+DMXLight('mid_2', 34, 'UKingGobo', groups=['mid', 'gobo', 'moving', 'mid_b'])
+DMXLight('mid_3', 45, 'UKingGobo', groups=['mid', 'gobo', 'moving', 'mid_a'])
+DMXLight('mid_4', 56, 'UKingGobo', groups=['mid', 'gobo', 'moving', 'mid_b'])
+DMXLight('front_1', 67, 'TomshineMovingHead6in1', groups=['front', 'rgb', 'white', 'uv', 'moving'])
+DMXLight('front_2', 85, 'TomshineMovingHead6in1', groups=['front', 'rgb', 'white', 'uv', 'moving'])
+DMXLight('laser', 103, 'Generic4ColorLaser', groups=['laser'])
+# TODO: channels
+# DMXLight('corner_par_1', ???, 'OPPSK_RGBWPar', groups=['par', 'rgb', 'white'])
+# DMXLight('corner_par_2', ???, 'OPPSK_RGBWPar', groups=['par', 'rgb', 'white'])
+# DMXLight('corner_par_3', ???, 'OPPSK_RGBWPar', groups=['par', 'rgb', 'white'])
+# DMXLight('corner_par_4', ???, 'OPPSK_RGBWPar', groups=['par', 'rgb', 'white'])
 
 
 controller = SceneController([

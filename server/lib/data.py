@@ -7,6 +7,26 @@ import easing_functions
 from . import Named, ListOf
 
 
+def get_bpm_duration(data, beats):
+    conf = data.get('audio/bpm/bpmconfidence')
+    bpm = data.get('audio/bpm/bpm')
+    if conf and bpm:
+        conf = conf[0]
+        bpm = bpm[0]
+        # TODO: use constant for OK bpm confidence
+        if beats and conf >= 0.8:
+            return (60.0 / bpm) * beats
+    return None
+
+
+def HasTriggers(*names):
+    class HasTriggersImpl:
+        def __init__(self, *args, **kwargs):
+            self.triggers = {n: kwargs.pop('trigger_' + n, None) or [] for n in names}
+            super().__init__(*args, **kwargs)
+    return HasTriggersImpl
+
+
 class Transition:
     def __init__(self, property, duration, delay=None, start_value=None, end_value=None, duration_beat=None, easing='LinearInOut', spread=None, light=None):
         self.property = property
@@ -50,10 +70,10 @@ class Transition:
             return value
         kwargs['start_value'] = _resolve_start_end(self.start_value)
         kwargs['end_value'] = _resolve_start_end(self.end_value)
-        
-        if self.duration_beat and data.get('audio/bpm/bpmconfidence', 0) >= 0.8 and data.get('audio/bpm/bpm'):
-            # TODO: use constant for OK bpm confidence
-            kwargs['duration'] = (60.0 / data['audio/bpm/bpm']) * self.duration_beat
+
+        bpm_duration = get_bpm_duration(data, self.duration_beat)
+        if bpm_duration:
+            kwargs['duration'] = bpm_duration
 
         return kwargs
 
@@ -321,7 +341,7 @@ class SweepMovementTransition(PointsMovementTransition):
         return SweepMovementTransition(*args, **kwargs)
 
 
-class Effect(Named, ListOf(Transition)):
+class Effect(Named, HasTriggers('select', 'run'), ListOf(Transition)):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.lights = None
@@ -352,7 +372,7 @@ class Effect(Named, ListOf(Transition)):
         return out
 
 
-class Program(Named, ListOf(Effect)):
+class Program(Named, HasTriggers('run', 'stop', 'select', 'next', 'prev', 'random'), ListOf(Effect)):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.current_effect_idx = 0 if len(self) else None
@@ -376,7 +396,7 @@ class Program(Named, ListOf(Effect)):
         return self.running_effect(data)
 
 
-class Scene(Named, ListOf(Program)):
+class Scene(Named, HasTriggers('select'), ListOf(Program)):
     def __call__(self, data, lights):
         out = {}
         for program in self:
@@ -385,12 +405,76 @@ class Scene(Named, ListOf(Program)):
         return out
 
 
-# class SceneGroup(Named, ListOf(Scene)):
-#     pass
+class SceneController(HasTriggers('next', 'prev', 'random'), ListOf(Scene)):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.current_scene_idx = 0 if len(self) else None
+
+    def __call__(self, data, lights):
+        if not len(self):
+            self.current_scene_idx = None
+            return {}
+
+        if self.current_scene_idx is None:
+            self.current_scene_idx = 0
+
+        return self[self.current_scene_idx](data, lights)
 
 
 class Trigger:
-    pass
+    def __init__(self, event, threshold, value='new', below_threshold=False, cooldown=None, cooldown_beat=None):
+        self.event = event
+        self.threshold = threshold
+        self.value = value
+        self.below_threshold = below_threshold
+        self.cooldown = cooldown
+        self.cooldown_beat = cooldown_beat
+        self.next_trigger = None
+
+    def __call__(self, data):
+        if self.next_trigger is not None and time.time() < self.next_trigger:
+            return None
+
+        res = data.get(self.event)
+        if not res:
+            return None
+
+        new_v, old_v, diff, diff_p = res
+
+        v = new_v
+        if self.value == 'old':
+            v = old_v
+        elif self.value == 'diff':
+            v = diff
+        elif self.value == 'percent':
+            v = diff_p
+
+        if self.below_threshold:
+            out = v < self.threshold
+        else:
+            out = v >= self.threshold
+
+        if out and self.cooldown:
+            cooldown = get_bpm_duration(data, self.cooldown_beat) or self.cooldown
+            self.next_trigger = time.time() + cooldown
+
+        return out
+
+    @classmethod
+    def run_trigger_group(cls, data, triggers):
+        for trigger in triggers:
+            try:
+                iter(trigger)
+            except:
+                # Outer list is an OR condition
+                if trigger(data):
+                    return True
+            else:
+                # inner lists are an AND condition
+                if all((t(data) for t in trigger)):
+                    return True
+
+        return False
 
 
 class Mood:

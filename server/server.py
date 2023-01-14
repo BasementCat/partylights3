@@ -1,27 +1,30 @@
 import time
-# from lib import HasThread
-# from lib.inputs.osc import OSCServerInput
-# from lib.inputs.osc.flavors import SynesthesiaOSCFlavor
-# from lib.nodes import Node
-# from lib.nodes.basic import PrintNode
+import signal
 
-
-# try:
-#     flavor = SynesthesiaOSCFlavor()
-#     server = OSCServerInput(flavor)
-#     printer = PrintNode('printer')
-#     Node.link(server.server, '*', printer, 'data')
-
-#     while True:
-#         time.sleep(1)
-# finally:
-#     HasThread.stop_all()
-
-import tempconfig
-from lib.data import Scene
+from lib import HasThread
+from lib.inputs import Input
+from lib.inputs.osc import OSCServerInput
+from lib.inputs.osc.flavors import SynesthesiaOSCFlavor
 from lib.lights import Light
 
-while True:
-    print(tempconfig.scene({}, Light.get(aslist=True)))
-    # print(tempconfig.scene({}, [Light.get('back_1')]))
-    time.sleep(0.05)
+from tempconfig import controller
+
+
+do_terminate = False
+def signal_handler(signo, frame):
+    global do_terminate
+    do_terminate = True
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+try:
+    flavor = SynesthesiaOSCFlavor()
+    server = OSCServerInput(flavor)
+
+    while not do_terminate:
+        lights = Light.get(aslist=True)
+        data = Input.get_data(timeout=0.01)
+        print(controller(data, lights))
+finally:
+    HasThread.stop_all()

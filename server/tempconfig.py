@@ -1,5 +1,5 @@
 from lib.lights import DMXLightType, DMXLightTypeFunction, DMXLight
-from lib.data import Transition, Effect, Program, Scene, CircleMovementTransition, SquareMovementTransition, SweepMovementTransition
+from lib.data import Transition, Effect, Program, Scene, SceneController, CircleMovementTransition, SquareMovementTransition, SweepMovementTransition
 
 
 DMXLightType('UnnamedGobo', 11, [
@@ -309,18 +309,20 @@ DMXLight('front_2', 85, 'TomshineMovingHead6in1')
 DMXLight('laser', 103, 'Generic4ColorLaser')
 
 
-scene = Scene('testscene', [
-    # Program('testprogram', [
-    #     Effect('chase', [
-    #         Transition('dim', 0.5, start_value=0, end_value=1, delay=0, spread={'delay': 0.25}),
-    #         Transition('dim', 0.5, start_value=1, end_value=0, delay=0.5, spread={'delay': 0.25}),
-    #     ])
-    # ]),
-    Program('movement', [
-        Effect('move', [
-            # CircleMovementTransition(180, 180, 20, 2, duration_beat=4, spread={'pan': 50}),
-            # SquareMovementTransition(180, 180, 20, 2, duration_beat=4, spread={'pan': 50}),
-            SweepMovementTransition(180, 220, None, 150, 2, duration_beat=4, spread={'x1': 50}),
+controller = SceneController([
+    Scene('testscene', [
+        Program('testprogram', [
+            Effect('chase', [
+                Transition('dim', 0.5, start_value=0, end_value=1, delay=0, spread={'delay': 0.25}),
+                Transition('dim', 0.5, start_value=1, end_value=0, delay=0.5, spread={'delay': 0.25}),
+            ])
+        ]),
+        Program('movement', [
+            Effect('move', [
+                # CircleMovementTransition(180, 180, 20, 2, duration_beat=4, spread={'pan': 50}),
+                # SquareMovementTransition(180, 180, 20, 2, duration_beat=4, spread={'pan': 50}),
+                SweepMovementTransition(180, 220, None, 150, 2, duration_beat=4, spread={'x1': 50}),
+            ])
         ])
     ])
 ])

@@ -1,4 +1,4 @@
-from threading import Lock
+from threading import RLock
 
 from . import Named, Collected, Grouped
 
@@ -11,7 +11,7 @@ class LightTypeFunction(Named):
         self.mapping = mapping or {}
         self.meta = dict(meta or {})
 
-    def _get_mapping(self, light):
+    def get_mapping(self, light):
         if isinstance(self.mapping, list):
             mapped_state = light.get_mapped_state()
             for (cond_key, cond_value), mapping in self.mapping:
@@ -21,7 +21,7 @@ class LightTypeFunction(Named):
         return self.mapping
 
     def _get_mapping_idx(self, light, value):
-        mappings = list(self._get_mapping(light).keys())
+        mappings = list(self.get_mapping(light).keys())
         if value in mappings:
             return mappings, mappings.index(value)
         return mappings, None
@@ -49,7 +49,7 @@ class LightTypeFunction(Named):
     def convert_to_raw(self, light, value):
         # Accepts a float/string for mapping
         if isinstance(value, str):
-            mapping = self._get_mapping(light)
+            mapping = self.get_mapping(light)
             if value in mapping:
                 out = mapping[value][0]
             else:
@@ -63,7 +63,7 @@ class LightTypeFunction(Named):
         # Convert a raw value to a mapping if present, otherwise return raw value
         # mapping is by output value - convert first
         outvalue = self.convert_to_output(light, value)
-        mapping = self._get_mapping(light)
+        mapping = self.get_mapping(light)
         for key, (low, high) in mapping.items():
             if outvalue >= low and outvalue <= high:
                 return key
@@ -129,8 +129,9 @@ class Light(Named, Grouped, Collected()):
         super().__init__(name, *args, **kwargs)
         self.name = name
         self.type = LightType.get(type) if isinstance(type, str) else type
-        self.state_lock = Lock()
+        self.state_lock = RLock()
         self.raw_state = {f: 0 for f in self.type.functions}
+        self.mapped_state = {f: 0 for f in self.type.functions}
         self.output_state = {f: 0 for f in self.type.functions}
 
     def update_state(self, new_state):
@@ -138,6 +139,9 @@ class Light(Named, Grouped, Collected()):
             for k, v in new_state.items():
                 if k in self.raw_state:
                     self.raw_state[k] = self.type.functions[k].convert_to_raw(self, v)
+
+            for k, v in self.raw_state.items():
+                self.mapped_state[k] = self.type.functions[k].convert_to_mapped(self, v)
 
             for k, v in self.raw_state.items():
                 self.output_state[k] = self.type.functions[k].convert_to_output(self, v)
@@ -150,7 +154,7 @@ class Light(Named, Grouped, Collected()):
 
     def get_mapped_state(self):
         with self.state_lock:
-            return {k: self.type.functions[k].convert_to_mapped(self, v) for k, v in self.raw_state.items()}
+            return dict(self.mapped_state)
 
     def get_output_state(self):
         with self.state_lock:

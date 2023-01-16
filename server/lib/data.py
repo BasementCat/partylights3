@@ -34,8 +34,33 @@ def HasTriggers(*names):
     return HasTriggersImpl
 
 
-class Transition:
-    def __init__(self, property, duration, delay=None, start_value=None, end_value=None, duration_beat=None, easing='LinearInOut', spread=None, light=None):
+class Dummy:
+    def __init__(self, *args, **kwargs):
+        pass
+
+
+class HasLightFilter:
+    def __init__(self, *args, lights=None, groups=None, **kwargs):
+        self.filter_lights = lights
+        self.filter_groups = groups
+        super().__init__(*args, **kwargs)
+
+    def _filter_lights(self, all_lights):
+        out = []
+        for l in all_lights:
+            if self.filter_lights and l.name not in self.filter_lights:
+                continue
+            if self.filter_groups and not set(self.filter_groups) & set(l.groups):
+                continue
+            out.append(l)
+        return out
+
+
+class Transition(HasLightFilter, Dummy):
+    cycle_direction = {}
+
+    def __init__(self, property, duration, delay=None, start_value=None, end_value=None, duration_beat=None, delay_beat=None, easing='LinearInOut', spread=None, light=None, **kwargs):
+        super().__init__(**kwargs)
         self.property = property
         self.duration = duration
 
@@ -46,6 +71,7 @@ class Transition:
         self.start_value = start_value
         self.end_value = end_value
         self.duration_beat = duration_beat
+        self.delay_beat = delay_beat
         self.easing = easing
         self.spread = spread or {}
         self.light = light
@@ -66,14 +92,68 @@ class Transition:
             'light': light,
         }
 
+        mapped_values = ('CYCLE', 'NEXT', 'PREV', 'RANDOM')
+        raw_state = light.get_raw_state()
+        mapped_state = function = mapping = None
+        if self.start_value in mapped_values or self.end_value in mapped_values:
+            mapped_state = light.get_mapped_state()
+            function = light.type.functions.get(self.property)
+            if function:
+                mapping = function.get_mapping(light)
+
         def _resolve_start_end(value):
             if value == 'CURRENT' or value is None:
                 return light.get_raw_state(property, 0)
             elif value == 'DEFAULT' or value is True:
                 # TODO: resolve to default
                 return 0
-            # TODO: cycle (difficult - requires state somehow)
-            # TODO: next/prev (may require start=next/prev & end=same, to immediately transition)
+            elif value == 'CYCLE':
+                self.cycle_direction.setdefault(light.name, {}).setdefault(self.property, 1)
+                nv = None
+                if function and mapped_state and isinstance(mapped_state.get(self.property), str):
+                    if self.cycle_direction[light.name][self.property] > 0:
+                        nv = function.next_mapping_from(light, mapped_state[self.property], wrap=False)
+                        if nv is None:
+                            self.cycle_direction[light.name][self.property] = -1
+                            nv = function.prev_mapping_from(light, mapped_state[self.property], wrap=False)
+                    elif self.cycle_direction[light.name][self.property] < 0:
+                        nv = function.prev_mapping_from(light, mapped_state[self.property], wrap=False)
+                        if nv is None:
+                            self.cycle_direction[light.name][self.property] = 1
+                            nv = function.next_mapping_from(light, mapped_state[self.property], wrap=False)
+                if nv is None:
+                    if self.property in raw_state:
+                        nv = raw_state[self.property] + (self.cycle_direction[light.name][self.property] / 10.0)
+                        if nv > 1:
+                            while nv > 1:
+                                nv -= 0.1
+                            self.cycle_direction[light.name][self.property] = -1
+                        if nv < 0:
+                            while nv < 0:
+                                nv += 0.1
+                            self.cycle_direction[light.name][self.property] = 1
+                return 0 if nv is None else nv
+            elif value == 'NEXT':
+                if function and mapped_state and isinstance(mapped_state.get(self.property), str):
+                    return function.next_mapping_from(light, mapped_state[self.property])
+                return (raw_state.get(self.property, 0) + 0.1) % 1
+            elif value == 'PREV':
+                if function and mapped_state and isinstance(mapped_state.get(self.property), str):
+                    return function.prev_mapping_from(light, mapped_state[self.property])
+                return (raw_state.get(self.property, 0) - 0.1) % 1
+            elif value == 'RANDOM':
+                if mapping:
+                    return random.choice(mapping)
+                return random.random()
+            elif str(value).startswith('@'):
+                value = data.get(value[1:], 0)
+                try:
+                    iter(value)
+                except:
+                    pass
+                else:
+                    value = value[0]
+                return min(1, max(0, value))
             return value
         kwargs['start_value'] = _resolve_start_end(self.start_value)
         kwargs['end_value'] = _resolve_start_end(self.end_value)
@@ -81,6 +161,10 @@ class Transition:
         bpm_duration = get_bpm_duration(data, self.duration_beat)
         if bpm_duration:
             kwargs['duration'] = bpm_duration
+
+        bpm_delay = get_bpm_duration(data, self.delay_beat)
+        if bpm_delay:
+            kwargs['delay'] = bpm_delay
 
         return kwargs
 
@@ -100,6 +184,11 @@ class Transition:
         return Transition(*args, **kwargs)
 
     def for_light(self, index, light, data):
+        lights = self._filter_lights([light])
+        if lights:
+            light = lights[0]
+        else:
+            return None
         kwargs = self._prep_to_copy(index, light, data)
         kwargs = self._apply_spread(index, light, data, kwargs)
         return self._copy(**kwargs)
@@ -147,9 +236,9 @@ class Transition:
 
 
 class MovementTransition(Transition):
-    def __init__(self, duration, delay=None, duration_beat=None, easing='LinearInOut', spread=None, light=None):
+    def __init__(self, duration, delay=None, duration_beat=None, delay_beat=None, easing='LinearInOut', spread=None, light=None, **kwargs):
         # Pass some default values to satisfy the parent constructor, they won't really be used
-        super().__init__('pan', duration, delay=delay, start_value=0, end_value=1, duration_beat=duration_beat, easing=easing, spread=spread, light=light)
+        super().__init__('pan', duration, delay=delay, start_value=0, end_value=1, duration_beat=duration_beat, delay_beat=delay_beat, easing=easing, spread=spread, light=light, **kwargs)
 
     def _prep_to_copy(self, index, light, data):
         kwargs = super()._prep_to_copy(index, light, data)
@@ -348,17 +437,19 @@ class SweepMovementTransition(PointsMovementTransition):
         return SweepMovementTransition(*args, **kwargs)
 
 
-class Effect(Named, HasTriggers('select', 'run'), ListOf(Transition)):
+class Effect(Named, HasLightFilter, HasTriggers('select', 'run'), ListOf(Transition)):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.lights = None
 
     def for_lights(self, data, lights):
-        # TODO: may be isolated to specific lights - whether that's externally determined, or figured out here
+        lights = self._filter_lights(lights)
         transitions = []
         for t in self:
             for i, l in enumerate(lights):
-                transitions.append(t.for_light(i, l, data))
+                lt = t.for_light(i, l, data)
+                if lt:
+                    transitions.append(lt)
         out = Effect(self.name, *transitions)
         out.lights = lights
         return out
@@ -379,7 +470,7 @@ class Effect(Named, HasTriggers('select', 'run'), ListOf(Transition)):
         return out
 
 
-class Program(Named, HasTriggers('run', 'stop', 'select', 'next', 'prev', 'random'), ListOf(Effect)):
+class Program(Named, HasLightFilter, HasTriggers('run', 'stop', 'select', 'next', 'prev', 'random'), ListOf(Effect)):
     def __init__(self, *args, multiple=False, start=True, autoplay=True, **kwargs):
         super().__init__(*args, **kwargs)
         self.multiple = multiple
@@ -497,6 +588,7 @@ class Program(Named, HasTriggers('run', 'stop', 'select', 'next', 'prev', 'rando
         return out
 
     def __call__(self, data, lights):
+        lights = self._filter_lights(lights)
         if self.multiple:
             return self._call__multi(data, lights)
         else:

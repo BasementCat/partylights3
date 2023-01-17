@@ -64,8 +64,9 @@ class Transition(HasLightFilter, Dummy):
         self.property = property
         self.duration = duration
 
-        if start_value == end_value:
-            raise ValueError("start_value and end_value must differ")
+        # Does this really make sense as a hard requirement?
+        # if start_value == end_value:
+        #     raise ValueError("start_value and end_value must differ")
 
         self.delay = delay or 0
         self.start_value = start_value
@@ -143,7 +144,7 @@ class Transition(HasLightFilter, Dummy):
                 return (raw_state.get(self.property, 0) - 0.1) % 1
             elif value == 'RANDOM':
                 if mapping:
-                    return random.choice(mapping)
+                    return random.choice(list(mapping.keys()))
                 return random.random()
             elif str(value).startswith('@'):
                 value = data.get(value[1:], 0)

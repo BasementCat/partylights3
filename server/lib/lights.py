@@ -10,6 +10,7 @@ class LightTypeFunction(Named):
         self.reset = reset
         self.mapping = mapping or {}
         self.meta = dict(meta or {})
+        self.mapping_order = 0
 
     def get_mapping(self, light):
         if isinstance(self.mapping, list):
@@ -51,7 +52,7 @@ class LightTypeFunction(Named):
         if isinstance(value, str):
             mapping = self.get_mapping(light)
             if value in mapping:
-                out = mapping[value][0]
+                out = self.convert_from_output(light, mapping[value][0])
             else:
                 # TODO: log or something? could be noisy
                 out = 0
@@ -75,6 +76,11 @@ class LightTypeFunction(Named):
             return 1 - value
         return value
 
+    def convert_from_output(self, light, value):
+        if self.invert:
+            return 1 - value
+        return value
+
 
 class DMXLightTypeFunction(LightTypeFunction):
     def __init__(self, name, channel, *args, map_highres=None, map_multi=None, range_deg=None, meta=None, **kwargs):
@@ -86,6 +92,13 @@ class DMXLightTypeFunction(LightTypeFunction):
         self.map_highres = map_highres
         self.map_multi = map_multi
 
+        if self.map_multi:
+            self.mapping_order = 2
+        elif self.map_highres:
+            self.mapping_order = 1
+        else:
+            self.mapping_order = 0
+
     def convert_to_output(self, light, value):
         if self.map_highres:
             value = super().convert_to_output(light, value)
@@ -96,16 +109,26 @@ class DMXLightTypeFunction(LightTypeFunction):
                 out[key] = intval & 0xff
                 intval = intval >> 8
             return out
-        elif self.map_multi:
-            value = [super().convert_to_output(light, v) for v in value]
+
+        if self.map_multi:
+            try:
+                iter(value)
+            except:
+                value = [value for _ in range(len(self.map_multi))]
+            newvalue = []
+            for v in value:
+                newvalue.append(super().convert_to_output(light, v))
             out = {}
             for i, key in enumerate(self.map_multi):
                 fn = light.type.functions.get(key, lambda l, v: int(v * 255))
-                out[key] = fn.convert_to_output(value[i])
+                out[key] = fn.convert_to_output(light, newvalue[i])
             return out
-        else:
-            value = super().convert_to_output(light, value)
-            return int(value * 255)
+
+        value = super().convert_to_output(light, value)
+        return int(value * 255)
+
+    def convert_from_output(self, light, value):
+        return super().convert_from_output(light, value / 255.0)
 
 
 class LightType(Named, Collected()):
@@ -114,6 +137,9 @@ class LightType(Named, Collected()):
     def __init__(self, name, functions, *args, **kwargs):
         super().__init__(name, *args, **kwargs)
         self.functions = {f.name: f for f in functions or []}
+
+    def _get_functions_for_mapping(self):
+        return list(sorted(self.functions.values(), key=lambda f: f.mapping_order))
 
 
 class DMXLightType(LightType):
@@ -136,15 +162,21 @@ class Light(Named, Grouped, Collected()):
 
     def update_state(self, new_state):
         with self.state_lock:
-            for k, v in new_state.items():
-                if k in self.raw_state:
-                    self.raw_state[k] = self.type.functions[k].convert_to_raw(self, v)
+            for fn in self.type._get_functions_for_mapping():
+                if fn.name in new_state:
+                    self.raw_state[fn.name] = fn.convert_to_raw(self, new_state[fn.name])
 
-            for k, v in self.raw_state.items():
-                self.mapped_state[k] = self.type.functions[k].convert_to_mapped(self, v)
+                res = fn.convert_to_mapped(self, self.raw_state[fn.name])
+                if isinstance(res, dict):
+                    self.mapped_state.update(res)
+                else:
+                    self.mapped_state[fn.name] = res
 
-            for k, v in self.raw_state.items():
-                self.output_state[k] = self.type.functions[k].convert_to_output(self, v)
+                res = fn.convert_to_output(self, self.raw_state[fn.name])
+                if isinstance(res, dict):
+                    self.output_state.update(res)
+                else:
+                    self.output_state[fn.name] = res
 
     def get_raw_state(self, key=None, dfl=None):
         with self.state_lock:
@@ -171,5 +203,7 @@ class DMXLight(Light):
         out = {}
         for k, v in state.items():
             if not speed_only or k == 'speed':
-                out[self.channel + (self.type.functions[k].channel - 1)] = v
+                fn = self.type.functions[k]
+                if fn.channel is not None:
+                    out[self.channel + (fn.channel - 1)] = v
         return out

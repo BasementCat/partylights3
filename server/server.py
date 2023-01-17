@@ -6,6 +6,7 @@ from lib.inputs import Input
 from lib.inputs.osc import OSCServerInput
 from lib.inputs.osc.flavors import SynesthesiaOSCFlavor
 from lib.lights import Light
+from lib.outputs import Output
 
 from tempconfig import controller
 
@@ -26,6 +27,6 @@ try:
         lights = Light.get(aslist=True)
         data = Input.get_data(timeout=0.01)
         controller.run_triggers(data)
-        print(controller(data, lights))
+        Output.run_all(controller(data, lights), lights)
 finally:
     HasThread.stop_all()

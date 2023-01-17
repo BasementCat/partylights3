@@ -1,5 +1,6 @@
 from lib.lights import DMXLightType, DMXLightTypeFunction, DMXLight
 from lib.data import Transition, Effect, Program, Scene, SceneController, CircleMovementTransition, SquareMovementTransition, SweepMovementTransition, Trigger
+from lib.outputs.dmx import DMXOutput
 
 
 DMXLightType('UnnamedGobo', 11, [
@@ -418,7 +419,7 @@ controller = SceneController([
                 SweepMovementTransition(325, 20, 385, None, 2, duration_beat=4, spread={'tilt': 25}, groups=['even']),
             ]),
             # TODO: front wall bounce
-        ], groups=['mid'])
+        ], groups=['mid']),
         Program('gobo', [
             Effect('gobo', [
                 Transition('gobo', 0.0000000001, start_value=None, end_value='CYCLE'),
@@ -426,7 +427,7 @@ controller = SceneController([
             Effect('color', [
                 Transition('color', 0.0000000001, start_value=None, end_value='CYCLE'),
             ], trigger_run=[Trigger('audio/hits/bass', 0.9, cooldown=0.25, cooldown_beat=0.5)]),
-        ], groups=['gobo'])
+        ], groups=['gobo']),
         Program('front_move', [
             Effect('up_circle', [
                 CircleMovementTransition(360, 110, 20, 2, duration_beat=4),
@@ -500,3 +501,6 @@ controller = SceneController([
         # TODO: no audio: rgb&uv=dim 1, rgb 0, uv 1;rgb=dim 0.2,color=?;other=dim 0.2
     ])
 ])
+
+
+output = DMXOutput('dmx')

@@ -330,11 +330,10 @@ DMXLight('mid_4', 56, 'UKingGobo', groups=['mid', 'gobo', 'moving', 'even'])
 DMXLight('front_1', 67, 'TomshineMovingHead6in1', groups=['front', 'rgb', 'white', 'uv', 'moving', 'odd'])
 DMXLight('front_2', 85, 'TomshineMovingHead6in1', groups=['front', 'rgb', 'white', 'uv', 'moving', 'even'])
 DMXLight('laser', 103, 'Generic4ColorLaser', groups=['laser'])
-# TODO: channels
-# DMXLight('corner_par_1', ???, 'OPPSK_RGBWPar', groups=['par', 'rgb', 'white', 'odd'])
-# DMXLight('corner_par_2', ???, 'OPPSK_RGBWPar', groups=['par', 'rgb', 'white', 'even'])
-# DMXLight('corner_par_3', ???, 'OPPSK_RGBWPar', groups=['par', 'rgb', 'white', 'odd'])
-# DMXLight('corner_par_4', ???, 'OPPSK_RGBWPar', groups=['par', 'rgb', 'white', 'even'])
+DMXLight('corner_par_1', 110, 'OPPSK_RGBWPar', groups=['par', 'rgb', 'white', 'odd'])
+DMXLight('corner_par_2', 118, 'OPPSK_RGBWPar', groups=['par', 'rgb', 'white', 'even'])
+DMXLight('corner_par_3', 126, 'OPPSK_RGBWPar', groups=['par', 'rgb', 'white', 'odd'])
+DMXLight('corner_par_4', 134, 'OPPSK_RGBWPar', groups=['par', 'rgb', 'white', 'even'])
 
 
 controller = SceneController([
@@ -346,7 +345,7 @@ controller = SceneController([
                 Transition('gobo', 0.0000000001, start_value=None, end_value='RANDOM'),
                 Transition('color', 0.0000000001, start_value=None, end_value='RANDOM'),
             ]),
-        ]),
+        ], multiple=True, multiple_all=True),
         Program('back_move', [
             Effect('sweep_v', [
                 SweepMovementTransition(300, 110, 360, 80, 1, duration_beat=4, groups=['odd']),
@@ -367,7 +366,7 @@ controller = SceneController([
             Effect('squares', [
                 SquareMovementTransition(320, 45, 35, 2, duration_beat=4, spread={'pan': 70}),
             ]),
-        ], groups=['back']),
+        ], groups=['back'], autoplay=False, trigger_random=[Trigger('audio/beat/onbeat', 0.9, cooldown=4, cooldown_beat=8)]),
         Program('mid_move', [
             Effect('split_fb_circles', [
                 CircleMovementTransition(150, 190, 35, 2, duration_beat=4, spread={'pan': 70}, groups=['odd']),
@@ -419,7 +418,7 @@ controller = SceneController([
                 SweepMovementTransition(325, 20, 385, None, 2, duration_beat=4, spread={'tilt': 25}, groups=['even']),
             ]),
             # TODO: front wall bounce
-        ], groups=['mid']),
+        ], groups=['mid'], autoplay=False, trigger_random=[Trigger('audio/beat/onbeat', 0.9, cooldown=4, cooldown_beat=8)]),
         Program('gobo', [
             Effect('gobo', [
                 Transition('gobo', 0.0000000001, start_value=None, end_value='CYCLE'),
@@ -427,7 +426,7 @@ controller = SceneController([
             Effect('color', [
                 Transition('color', 0.0000000001, start_value=None, end_value='CYCLE'),
             ], trigger_run=[Trigger('audio/hits/bass', 0.9, cooldown=0.25, cooldown_beat=0.5)]),
-        ], groups=['gobo']),
+        ], groups=['gobo'], multiple=True),
         Program('front_move', [
             Effect('up_circle', [
                 CircleMovementTransition(360, 110, 20, 2, duration_beat=4),
@@ -454,11 +453,11 @@ controller = SceneController([
                 SweepMovementTransition(450, 30, 270, None, 4, duration_beat=8, groups=['even']),
                 SweepMovementTransition(270, 30, 450, None, 4, delay=4, duration_beat=8, delay_beat=8, groups=['even']),
             ]),
-        ], groups=['front']),
+        ], groups=['front'], autoplay=False, trigger_random=[Trigger('audio/beat/onbeat', 0.9, cooldown=4, cooldown_beat=8)]),
         Program('front_color', [
             Effect('base_dim', [
                 Transition('dim', 0.00000001, start_value=None, end_value=0.7),
-            ]),
+            ], trigger_run=[True]),
             Effect('pulse', [
                 Transition('dim', 0.125, start_value=1, end_value=0.7),
             ], trigger_run=[Trigger('audio/hits/bass', 0.9)]),
@@ -467,24 +466,24 @@ controller = SceneController([
                 Transition('blue', 0.25, start_value=None, end_value='@audio/level/mid', duration_beat=1),
                 Transition('green', 0.25, start_value=None, end_value='@audio/level/midhigh', duration_beat=1),
                 Transition('white', 0.25, start_value=None, end_value='@audio/level/high', duration_beat=1),
-            ]),
-        ], groups=['front']),
+            ], trigger_run=[True]),
+        ], groups=['front'], multiple=True),
         Program('laser', [
             Effect('base_mode', [
                 Transition('mode', 0.00000001, start_value=None, end_value='static'),
-            ]),
+            ], trigger_run=[True]),
             Effect('dynamic_mode', [
                 Transition('mode', 0.00000001, start_value=None, end_value='dynamic'),
             ], trigger_run=[Trigger('audio/energy/intensity', 0.5)]),
             Effect('pattern', [
                 Transition('pattern', 0.0000001, start_value=None, end_value='RANDOM'),
                 Transition('dummy', 4, start_value=0, end_value=1, duration_beat=8),
-            ]),
+            ], trigger_run=[Trigger('audio/hits/bass', 0.9)]),
             Effect('size', [
                 Transition('pattern_size', 0.125, start_value=1, end_value=0.5),
                 # TODO: scale w/ volume (overall scale + diff somehow)
             ], trigger_run=[Trigger('audio/hits/bass', 0.9)]),
-        ], groups=['laser']),
+        ], groups=['laser'], multiple=True),
         # TODO: laser2
         # TODO: other multi light
         Program('uplights', [
@@ -497,7 +496,7 @@ controller = SceneController([
                 Transition('dim', 0.125, start_value=1, end_value=0.8),
                 Transition('dummy', 0.5, start_value=0, end_value=1, duration_beat=1),
             ]),
-        ], groups=['par'])
+        ], groups=['par'], autoplay=False, trigger_random=[Trigger('audio/beat/onbeat', 0.9, cooldown=4, cooldown_beat=8)]),
         # TODO: no audio: rgb&uv=dim 1, rgb 0, uv 1;rgb=dim 0.2,color=?;other=dim 0.2
     ])
 ])

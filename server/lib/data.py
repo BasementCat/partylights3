@@ -472,17 +472,19 @@ class Effect(Named, HasLightFilter, HasTriggers('select', 'run'), ListOf(Transit
 
 
 class Program(Named, HasLightFilter, HasTriggers('run', 'stop', 'select', 'next', 'prev', 'random'), ListOf(Effect)):
-    def __init__(self, *args, multiple=False, start=True, autoplay=True, **kwargs):
+    def __init__(self, *args, multiple=False, multiple_all=False, start=True, autoplay=True, loop=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.multiple = multiple
+        self.is_running = start
         if self.multiple:
+            self.multiple_all = multiple_all
             self.pending_effects = {}
             self.running_effects = {}
         else:
             self.current_effect_idx = 0 if len(self) else None
             self.running_effect = None
-            self.is_running = start
             self.autoplay = autoplay
+            self.loop = (start and not self.autoplay) if loop is None else loop
             self.play_next = False
 
     def _run_triggers__single(self, data):
@@ -561,7 +563,7 @@ class Program(Named, HasLightFilter, HasTriggers('run', 'stop', 'select', 'next'
                 self.current_effect_idx = (self.current_effect_idx + 1) % len(self)
 
         if self.running_effect is None:
-            if self.autoplay or self.play_next:
+            if self.autoplay or self.loop or self.play_next:
                 self.play_next = False
                 self.running_effect = self[self.current_effect_idx].for_lights(data, lights)
             else:
@@ -573,6 +575,11 @@ class Program(Named, HasLightFilter, HasTriggers('run', 'stop', 'select', 'next'
         for k, v in list(self.running_effects.items()):
             if not v.is_running:
                 del self.running_effects[k]
+
+        if self.multiple_all:
+            for i, e in enumerate(self):
+                if i not in self.pending_effects and i not in self.running_effects:
+                    self.pending_effects[i] = e
 
         if not (self.is_running and (self.pending_effects or self.running_effects)):
             return {}
@@ -700,11 +707,11 @@ class Trigger:
                 iter(trigger)
             except:
                 # Outer list is an OR condition
-                if trigger(data):
+                if trigger is True or trigger(data):
                     return True
             else:
                 # inner lists are an AND condition
-                if all((t(data) for t in trigger)):
+                if all((t is True or t(data) for t in trigger)):
                     return True
 
         return False

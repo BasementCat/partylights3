@@ -315,7 +315,7 @@ DMXLightType('OPPSK_RGBWPar', 8, [
 ])
 
 # TODO: that other multi-light
-# TODO: 2nd laser
+# TODO: 2nd laser, addr 142 (already dmx'd in)
 # TODO: hue
 
 
@@ -342,162 +342,179 @@ controller = SceneController([
             Effect('base', [
                 Transition('speed', 0.0000000001, start_value=None, end_value=1),
                 Transition('dim', 0.0000000001, start_value=None, end_value=1),
-                Transition('gobo', 0.0000000001, start_value=None, end_value='RANDOM'),
-                Transition('color', 0.0000000001, start_value=None, end_value='RANDOM'),
+                # TODO: this makes gobo/color wheels freak out, find another way
+                # Transition('gobo', 0.0000000001, start_value=None, end_value='RANDOM'),
+                # Transition('color', 0.0000000001, start_value=None, end_value='RANDOM'),
             ]),
         ], multiple=True, multiple_all=True),
-        Program('back_move', [
-            Effect('sweep_v', [
-                SweepMovementTransition(300, 110, 360, 80, 1, duration_beat=4, groups=['odd']),
-                SweepMovementTransition(390, 110, 360, 80, 1, duration_beat=4, groups=['even']),
-                SweepMovementTransition(360, 80, 300, 110, 1, duration_beat=4, delay=1, delay_beat=4, groups=['odd']),
-                SweepMovementTransition(360, 80, 390, 110, 1, duration_beat=4, delay=1, delay_beat=4, groups=['even']),
-            ]),
-            Effect('sweep_x', [
-                # TODO: will need adjustment
-                SweepMovementTransition(300, 110, 360, 80, 1, duration_beat=4, groups=['odd']),
-                SweepMovementTransition(390, 110, 360, 80, 1, duration_beat=4, groups=['even']),
-                SweepMovementTransition(360, 80, 300, 110, 1, duration_beat=4, delay=1, delay_beat=4, groups=['odd']),
-                SweepMovementTransition(360, 80, 390, 110, 1, duration_beat=4, delay=1, delay_beat=4, groups=['even']),
-            ]),
-            Effect('circles', [
-                CircleMovementTransition(320, 45, 35, 2, duration_beat=4, spread={'pan': 70}),
-            ]),
-            Effect('squares', [
-                SquareMovementTransition(320, 45, 35, 2, duration_beat=4, spread={'pan': 70}),
-            ]),
-        ], groups=['back'], autoplay=False, trigger_random=[Trigger('audio/beat/onbeat', 0.9, cooldown=4, cooldown_beat=8)]),
-        Program('mid_move', [
-            Effect('split_fb_circles', [
-                CircleMovementTransition(150, 190, 35, 2, duration_beat=4, spread={'pan': 70}, groups=['odd']),
-                CircleMovementTransition(420, 45, 35, 2, duration_beat=4, spread={'pan': -70}, groups=['even']),
-            ]),
-            Effect('split_fb_squares', [
-                SquareMovementTransition(150, 190, 35, 2, duration_beat=4, spread={'pan': 70}, groups=['odd']),
-                SquareMovementTransition(420, 45, 35, 2, duration_beat=4, spread={'pan': -70}, groups=['even']),
-            ]),
-            Effect('front_circles', [
-                CircleMovementTransition(150, 190, 35, 2, duration_beat=4, spread={'pan': 70}, groups=['odd']),
-            ]),
-            Effect('floor_circles', [
-                CircleMovementTransition(420, 45, 35, 2, duration_beat=4, spread={'pan': -70}, groups=['even']),
-            ]),
-            Effect('front_squares', [
-                SquareMovementTransition(150, 190, 35, 2, duration_beat=4, spread={'pan': 70}, groups=['odd']),
-            ]),
-            Effect('floor_squares', [
-                SquareMovementTransition(420, 45, 35, 2, duration_beat=4, spread={'pan': -70}, groups=['even']),
-            ]),
-            Effect('split_lr_circles', [
-                CircleMovementTransition(70, 20, 35, 2, duration_beat=4, spread={'pan': 70}, groups=['odd']),
-                CircleMovementTransition(250, 20, 35, 2, duration_beat=4, spread={'pan': -70}, groups=['even']),
-            ]),
-            Effect('split_lr_squares', [
-                SquareMovementTransition(70, 20, 35, 2, duration_beat=4, spread={'pan': 70}, groups=['odd']),
-                SquareMovementTransition(250, 20, 35, 2, duration_beat=4, spread={'pan': -70}, groups=['even']),
-            ]),
-            Effect('front_sweep', [
-                Transition('dim', 0.125, start_value=0, end_value=1, duration_beat=0.25, delay=0, delay_beat=0, spread={'delay': 0.5, 'delay_beat': 1}),
-                SweepMovementTransition(110, 200, 210, None, 2, duration_beat=4, delay=0, delay_beat=0, spread={'delay': 0.5, 'delay_beat': 1}),
-                Transition('dim', 0.125, start_value=1, end_value=0, duration_beat=0.25, delay=2 - 0.125, delay_beat=3.75, spread={'delay': 0.5, 'delay_beat': 1}),
-                Transition('pan', 0.000000001, start_value='CURRENT', end_value=110, delay=2, delay_beat=4, spread={'delay': 0.5, 'delay_beat': 1}),
-            ]),
-            Effect('con_circles', [
-                CircleMovementTransition(360, 110, 15, 2, duration_beat=4, spread={'radius': 15}),
-            ]),
-            Effect('full_double_x', [
-                SweepMovementTransition(380, 20, None, 180, 2, duration_beat=4, groups=['odd']),
-                SweepMovementTransition(110, 20, None, 180, 2, duration_beat=4, groups=['even']),
-            ]),
-            Effect('front_double_x', [
-                SweepMovementTransition(100, 20, 190, 60, 2, duration_beat=4, groups=['odd']),
-                SweepMovementTransition(190, 20, 100, 60, 2, duration_beat=4, groups=['even']),
-            ]),
-            Effect('opposite_sweep', [
-                SweepMovementTransition(385, 20, 325, None, 2, duration_beat=4, spread={'tilt': 25}, groups=['odd']),
-                SweepMovementTransition(325, 20, 385, None, 2, duration_beat=4, spread={'tilt': 25}, groups=['even']),
-            ]),
-            # TODO: front wall bounce
-        ], groups=['mid'], autoplay=False, trigger_random=[Trigger('audio/beat/onbeat', 0.9, cooldown=4, cooldown_beat=8)]),
-        Program('gobo', [
-            Effect('gobo', [
-                Transition('gobo', 0.0000000001, start_value=None, end_value='CYCLE'),
-            ], trigger_run=[Trigger('audio/hits/bass', 0.9, cooldown=1, cooldown_beat=2)]),
-            Effect('color', [
-                Transition('color', 0.0000000001, start_value=None, end_value='CYCLE'),
-            ], trigger_run=[Trigger('audio/hits/bass', 0.9, cooldown=0.25, cooldown_beat=0.5)]),
-        ], groups=['gobo'], multiple=True),
-        Program('front_move', [
-            Effect('up_circle', [
-                CircleMovementTransition(360, 110, 20, 2, duration_beat=4),
-            ]),
-            Effect('sweep_up_lr', [
-                SweepMovementTransition(270, 200, None, 0, 2, duration_beat=4),
-            ]),
-            Effect('sweep_up_lr_inv', [
-                SweepMovementTransition(270, 200, None, 0, 2, duration_beat=4, groups=['odd']),
-                SweepMovementTransition(270, 0, None, 200, 2, duration_beat=4, groups=['even']),
-            ]),
-            Effect('sweep_up_fb', [
-                SweepMovementTransition(180, 200, None, 0, 2, duration_beat=4),
-            ]),
-            Effect('sweep_room_slow', [
-                SweepMovementTransition(270, 0, 450, None, 4, duration_beat=8, groups=['odd']),
-                SweepMovementTransition(450, 0, 270, None, 4, delay=4, duration_beat=8, delay_beat=8, groups=['odd']),
-                SweepMovementTransition(450, 0, 270, None, 4, duration_beat=8, groups=['even']),
-                SweepMovementTransition(270, 0, 450, None, 4, delay=4, duration_beat=8, delay_beat=8, groups=['even']),
-            ]),
-            Effect('sweep_ceil_slow', [
-                SweepMovementTransition(270, 30, 450, None, 4, duration_beat=8, groups=['odd']),
-                SweepMovementTransition(450, 30, 270, None, 4, delay=4, duration_beat=8, delay_beat=8, groups=['odd']),
-                SweepMovementTransition(450, 30, 270, None, 4, duration_beat=8, groups=['even']),
-                SweepMovementTransition(270, 30, 450, None, 4, delay=4, duration_beat=8, delay_beat=8, groups=['even']),
-            ]),
-        ], groups=['front'], autoplay=False, trigger_random=[Trigger('audio/beat/onbeat', 0.9, cooldown=4, cooldown_beat=8)]),
-        Program('front_color', [
-            Effect('base_dim', [
-                Transition('dim', 0.00000001, start_value=None, end_value=0.7),
-            ], trigger_run=[True]),
-            Effect('pulse', [
-                Transition('dim', 0.125, start_value=1, end_value=0.7),
-            ], trigger_run=[Trigger('audio/hits/bass', 0.9)]),
-            Effect('rgb_bands', [
-                Transition('red', 0.25, start_value=None, end_value='@audio/level/bass', duration_beat=1),
-                Transition('blue', 0.25, start_value=None, end_value='@audio/level/mid', duration_beat=1),
-                Transition('green', 0.25, start_value=None, end_value='@audio/level/midhigh', duration_beat=1),
-                Transition('white', 0.25, start_value=None, end_value='@audio/level/high', duration_beat=1),
-            ], trigger_run=[True]),
-        ], groups=['front'], multiple=True),
-        Program('laser', [
-            Effect('base_mode', [
-                Transition('mode', 0.00000001, start_value=None, end_value='static'),
-            ], trigger_run=[True]),
-            Effect('dynamic_mode', [
-                Transition('mode', 0.00000001, start_value=None, end_value='dynamic'),
-            ], trigger_run=[Trigger('audio/energy/intensity', 0.5)]),
-            Effect('pattern', [
-                Transition('pattern', 0.0000001, start_value=None, end_value='RANDOM'),
-                Transition('dummy', 4, start_value=0, end_value=1, duration_beat=8),
-            ], trigger_run=[Trigger('audio/hits/bass', 0.9)]),
-            Effect('size', [
-                Transition('pattern_size', 0.125, start_value=1, end_value=0.5),
-                # TODO: scale w/ volume (overall scale + diff somehow)
-            ], trigger_run=[Trigger('audio/hits/bass', 0.9)]),
-        ], groups=['laser'], multiple=True),
-        # TODO: laser2
-        # TODO: other multi light
-        Program('uplights', [
-            Effect('random_chase_fast', [
-                Transition('rgb', 0.125, start_value=None, end_value='RANDOM', delay=0, spread={'delay': 0.25}),
-                Transition('dummy', 0.5, start_value=0, end_value=1, duration_beat=1),
-            ]),
-            Effect('random_pulse', [
-                Transition('rgb', 0.25, start_value=None, end_value='RANDOM'),
-                Transition('dim', 0.125, start_value=1, end_value=0.8),
-                Transition('dummy', 0.5, start_value=0, end_value=1, duration_beat=1),
-            ]),
-        ], groups=['par'], autoplay=False, trigger_random=[Trigger('audio/beat/onbeat', 0.9, cooldown=4, cooldown_beat=8)]),
-        # TODO: no audio: rgb&uv=dim 1, rgb 0, uv 1;rgb=dim 0.2,color=?;other=dim 0.2
+        # Program('back_move', [
+        #     Effect('sweep_v', [
+        #         SweepMovementTransition(300, 110, 360, 10, 1, duration_beat=4, groups=['odd']),
+        #         SweepMovementTransition(370, 110, 300, 10, 1, duration_beat=4, groups=['even']),
+        #         # TODO: reset seems slow???
+        #         # SweepMovementTransition(360, 10, 300, 110, 1, duration_beat=4, delay=1, delay_beat=4, groups=['odd']),
+        #         # SweepMovementTransition(360, 10, 370, 110, 1, duration_beat=4, delay=1, delay_beat=4, groups=['even']),
+        #     ]),
+        #     # TODO: these are not at a good angle for this
+        #     # Effect('sweep_x', [
+        #     #     # TODO: will need adjustment
+        #     #     SweepMovementTransition(300, 110, 360, 10, 1, duration_beat=4, groups=['odd']),
+        #     #     SweepMovementTransition(370, 110, 300, 10, 1, duration_beat=4, groups=['even']),
+        #     #     # SweepMovementTransition(360, 10, 300, 110, 1, duration_beat=4, delay=1, delay_beat=4, groups=['odd']),
+        #     #     # SweepMovementTransition(360, 10, 370, 110, 1, duration_beat=4, delay=1, delay_beat=4, groups=['even']),
+        #     # ]),
+        #     Effect('circles', [
+        #         CircleMovementTransition(350, 55, 25, 2, duration_beat=4, spread={'pan': -50}),
+        #     ]),
+        #     Effect('squares', [
+        #         SquareMovementTransition(350, 55, 25, 2, duration_beat=4, spread={'pan': -50}),
+        #     ]),
+        # ], groups=['back'], autoplay=False, trigger_random=[Trigger('audio/beat/onbeat', 0.9, cooldown=4, cooldown_beat=8)]),
+        # Program('mid_move', [
+        #     Effect('split_fb_circles', [
+        #         # TODO: weird movement to rear? think we're getting weird data or attempting to reset to 0
+        #         CircleMovementTransition(200, 190, 35, 2, duration_beat=4, spread={'pan': -30}, groups=['odd']),
+        #         CircleMovementTransition(220, 65, 35, 2, duration_beat=4, spread={'pan': -30, 'tilt': -15}, groups=['even']),
+        #     ]),
+        #     Effect('split_fb_squares', [
+        #         SquareMovementTransition(200, 190, 60, 2, duration_beat=4, spread={'pan': -30}, groups=['odd']),
+        #         SquareMovementTransition(220, 65, 60, 2, duration_beat=4, spread={'pan': -30, 'tilt': -15}, groups=['even']),
+        #     ]),
+        #     Effect('front_circles', [
+        #         CircleMovementTransition(130, 190, 25, 2, duration_beat=4, spread={'pan': 30}),
+        #     ]),
+        #     Effect('floor_circles', [
+        #         CircleMovementTransition(200, 45, 45, 2, duration_beat=4, spread={'pan': -30}),
+        #     ]),
+        #     Effect('front_squares', [
+        #         SquareMovementTransition(130, 190, 35, 2, duration_beat=4, spread={'pan': 30}),
+        #     ]),
+        #     Effect('floor_squares', [
+        #         SquareMovementTransition(200, 45, 45, 2, duration_beat=4, spread={'pan': -30}),
+        #     ]),
+        #     Effect('split_lr_circles', [
+        #         CircleMovementTransition(50, 25, 20, 2, duration_beat=4, spread={'pan': 15}, groups=['odd']),
+        #         CircleMovementTransition(300, 25, 20, 2, duration_beat=4, spread={'pan': -15}, groups=['even']),
+        #     ]),
+        #     Effect('split_lr_squares', [
+        #         SquareMovementTransition(50, 25, 25, 2, duration_beat=4, spread={'pan': 15}, groups=['odd']),
+        #         SquareMovementTransition(300, 25, 25, 2, duration_beat=4, spread={'pan': -15}, groups=['even']),
+        #     ]),
+        #     # Not quite ready for this yet, it's complex
+        #     # Effect('front_sweep', [
+        #     #     Transition('dim', 0.125, start_value=0, end_value=1, duration_beat=0.25, delay=0, delay_beat=0, spread={'delay': 0.5, 'delay_beat': 1}),
+        #     #     SweepMovementTransition(110, 200, 210, None, 2, duration_beat=4, delay=0, delay_beat=0, spread={'delay': 0.5, 'delay_beat': 1}),
+        #     #     Transition('dim', 0.125, start_value=1, end_value=0, duration_beat=0.25, delay=2 - 0.125, delay_beat=3.75, spread={'delay': 0.5, 'delay_beat': 1}),
+        #     #     # Transition('pan', 0.000000001, start_value='CURRENT', end_value=110, delay=2, delay_beat=4, spread={'delay': 0.5, 'delay_beat': 1}),
+        #     # ]),
+        #     Effect('con_circles', [
+        #         CircleMovementTransition(360, 110, 15, 2, duration_beat=4, spread={'radius': 15}),
+        #     ]),
+        #     Effect('full_double_x', [
+        #         SweepMovementTransition(380, 20, None, 180, 2, duration_beat=4, groups=['odd']),
+        #         SweepMovementTransition(110, 20, None, 180, 2, duration_beat=4, groups=['even']),
+        #     ]),
+        #     Effect('back_double_x', [
+        #         SweepMovementTransition(100, 20, 190, 60, 2, duration_beat=4, groups=['odd']),
+        #         SweepMovementTransition(190, 20, 100, 60, 2, duration_beat=4, groups=['even']),
+        #     ]),
+        #     Effect('front_double_x', [
+        #         SweepMovementTransition(300, 10, 390, 60, 2, duration_beat=4, groups=['odd']),
+        #         SweepMovementTransition(390, 10, 300, 60, 2, duration_beat=4, groups=['even']),
+        #     ]),
+        #     Effect('opposite_sweep', [
+        #         SweepMovementTransition(425, 50, 270, None, 2, duration_beat=4, spread={'tilt': 100}, groups=['odd']),
+        #         SweepMovementTransition(270, 20, 425, None, 2, duration_beat=4, spread={'tilt': 25}, groups=['even']),
+        #     ]),
+        #     # TODO: front wall bounce
+        # ], groups=['mid'], autoplay=False, trigger_random=[Trigger('audio/beat/onbeat', 0.9, cooldown=4, cooldown_beat=8)]),
+        # Program('gobo', [
+        #     Effect('gobo', [
+        #         Transition('gobo', 0.0000000001, start_value=None, end_value='CYCLE'),
+        #     ], trigger_run=[Trigger('audio/hits/bass', 0.9, cooldown=1, cooldown_beat=2)]),
+        #     Effect('color', [
+        #         Transition('color', 0.0000000001, start_value=None, end_value='CYCLE'),
+        #     ], trigger_run=[Trigger('audio/hits/bass', 0.9, cooldown=0.25, cooldown_beat=0.5)]),
+        # ], groups=['gobo'], multiple=True),
+        # Program('front_move', [
+        #     # Effect('up_circle', [
+        #     #     CircleMovementTransition(180, 80, 30, 2, duration_beat=4),
+        #     # ]),
+        #     # TODO: doesn't work...
+        #     # Effect('sweep_up_lr', [
+        #     #     SweepMovementTransition(270, 200, None, 0, 2, duration_beat=4),
+        #     # ]),
+        #     # Effect('sweep_up_lr_inv', [
+        #     #     SweepMovementTransition(270, 200, None, 0, 2, duration_beat=4, groups=['odd']),
+        #     #     # TODO: just this one doesn't work
+        #     #     SweepMovementTransition(270, 0, None, 200, 2, duration_beat=4, groups=['even']),
+        #     # ]),
+        #     # TODO: doesn't work
+        #     # Effect('sweep_up_fb', [
+        #     #     SweepMovementTransition(180, 200, None, 0, 2, duration_beat=4),
+        #     # ]),
+        #     # TODO: very weird
+        #     # Effect('sweep_room_slow', [
+        #     #     SweepMovementTransition(270, 0, 450, None, 4, duration_beat=8, groups=['odd']),
+        #     #     SweepMovementTransition(450, 0, 270, None, 4, delay=4, duration_beat=8, delay_beat=8, groups=['odd']),
+        #     #     SweepMovementTransition(450, 0, 270, None, 4, duration_beat=8, groups=['even']),
+        #     #     SweepMovementTransition(270, 0, 450, None, 4, delay=4, duration_beat=8, delay_beat=8, groups=['even']),
+        #     # ]),
+        #     # TODO: same...
+        #     # Effect('sweep_ceil_slow', [
+        #     #     SweepMovementTransition(270, 30, 450, None, 4, duration_beat=8, groups=['odd']),
+        #     #     SweepMovementTransition(450, 30, 270, None, 4, delay=4, duration_beat=8, delay_beat=8, groups=['odd']),
+        #     #     SweepMovementTransition(450, 30, 270, None, 4, duration_beat=8, groups=['even']),
+        #     #     SweepMovementTransition(270, 30, 450, None, 4, delay=4, duration_beat=8, delay_beat=8, groups=['even']),
+        #     # ]),
+        # ], groups=['front'], autoplay=False, trigger_random=[Trigger('audio/beat/onbeat', 0.9, cooldown=4, cooldown_beat=8)]),
+
+        ### DONE ABOVE ###
+
+        # Program('front_color', [
+        #     Effect('base_dim', [
+        #         Transition('dim', 0.00000001, start_value=None, end_value=0.7),
+        #     ], trigger_run=[True]),
+        #     Effect('pulse', [
+        #         Transition('dim', 0.125, start_value=1, end_value=0.7),
+        #     ], trigger_run=[Trigger('audio/hits/bass', 0.9)]),
+        #     Effect('rgb_bands', [
+        #         Transition('red', 0.25, start_value=None, end_value='@audio/level/bass', duration_beat=1),
+        #         Transition('blue', 0.25, start_value=None, end_value='@audio/level/mid', duration_beat=1),
+        #         Transition('green', 0.25, start_value=None, end_value='@audio/level/midhigh', duration_beat=1),
+        #         Transition('white', 0.25, start_value=None, end_value='@audio/level/high', duration_beat=1),
+        #     ], trigger_run=[True]),
+        # ], groups=['front'], multiple=True),
+        # Program('laser', [
+        #     Effect('base_mode', [
+        #         Transition('mode', 0.00000001, start_value=None, end_value='static'),
+        #     ], trigger_run=[True]),
+        #     Effect('dynamic_mode', [
+        #         Transition('mode', 0.00000001, start_value=None, end_value='dynamic'),
+        #     ], trigger_run=[Trigger('audio/energy/intensity', 0.5)]),
+        #     Effect('pattern', [
+        #         Transition('pattern', 0.0000001, start_value=None, end_value='RANDOM'),
+        #         Transition('dummy', 4, start_value=0, end_value=1, duration_beat=8),
+        #     ], trigger_run=[Trigger('audio/hits/bass', 0.9)]),
+        #     Effect('size', [
+        #         Transition('pattern_size', 0.125, start_value=1, end_value=0.5),
+        #         # TODO: scale w/ volume (overall scale + diff somehow)
+        #     ], trigger_run=[Trigger('audio/hits/bass', 0.9)]),
+        # ], groups=['laser'], multiple=True),
+        # # TODO: laser2
+        # # TODO: other multi light
+        # Program('uplights', [
+        #     Effect('random_chase_fast', [
+        #         Transition('rgb', 0.125, start_value=None, end_value='RANDOM', delay=0, spread={'delay': 0.25}),
+        #         Transition('dummy', 0.5, start_value=0, end_value=1, duration_beat=1),
+        #     ]),
+        #     Effect('random_pulse', [
+        #         Transition('rgb', 0.25, start_value=None, end_value='RANDOM'),
+        #         Transition('dim', 0.125, start_value=1, end_value=0.8),
+        #         Transition('dummy', 0.5, start_value=0, end_value=1, duration_beat=1),
+        #     ]),
+        # ], groups=['par'], autoplay=False, trigger_random=[Trigger('audio/beat/onbeat', 0.9, cooldown=4, cooldown_beat=8)]),
+        # # TODO: no audio: rgb&uv=dim 1, rgb 0, uv 1;rgb=dim 0.2,color=?;other=dim 0.2
     ])
 ])
 

@@ -118,12 +118,11 @@ class Transition(HasLightFilter, Dummy):
 
         mapped_values = ('CYCLE', 'NEXT', 'PREV', 'RANDOM')
         raw_state = light.get_raw_state()
-        mapped_state = function = mapping = None
-        if self.start_value in mapped_values or self.end_value in mapped_values:
-            mapped_state = light.get_mapped_state()
-            function = light.type.functions.get(self.property)
-            if function:
-                mapping = function.get_mapping(light)
+        mapping = None
+        mapped_state = light.get_mapped_state()
+        function = light.type.functions.get(self.property)
+        if function:
+            mapping = function.get_mapping(light)
 
         def _resolve_start_end(value, start_value=None):
             if value == 'START':

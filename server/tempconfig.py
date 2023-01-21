@@ -387,6 +387,16 @@ controller = SceneController([
                 Transition('mode', 30, start_value='manual', end_value='START'),
             ]),
         ]),
+
+        Program('base_laser', [
+            Effect('base_laser_1', [
+                Transition('mode', 0.0000001, start_value=None, end_value='static'),
+            ], lights=['laser']),
+            Effect('base_laser_2', [
+                Transition('mode', 0.0000001, start_value=None, end_value='manual'),
+            ], lights=['laser2']),
+        ], groups=['laser'], multiple=True, multiple_all=True),
+
         Program('back_move', [
             Effect('sweep_v', [
                 SweepMovementTransition(300, 110, 360, 10, 2, duration_beat=4, groups=['odd']),
@@ -507,6 +517,9 @@ controller = SceneController([
             #     Transition('green', 0.25, start_value=None, end_value='@audio/hits/midhigh', duration_beat=1),
             #     Transition('white', 0.25, start_value=None, end_value='@audio/hits/high', duration_beat=1),
             # ], trigger_run=[True]),
+            Effect('color', [
+                Transition('rgb', 0.125, start_value=None, end_value='RANDOMRGB', duration_beat=1, keep=['end_value']),
+            ], trigger_run=[Trigger('audio/hits/bass', 0.9)]),
         ], groups=['front'], multiple=True),
         Program('laser_effect', [
             Effect('pattern', [
@@ -518,23 +531,19 @@ controller = SceneController([
                 # TODO: scale w/ volume (overall scale + diff somehow)
             ], trigger_run=[Trigger('audio/hits/bass', 0.9)]),
         ], groups=['laser'], multiple=True),
+
         Program('laser1_mode', [
-            Effect('base_mode', [
-                Transition('mode', 0.00000001, start_value=None, end_value='static'),
-            ], trigger_run=[True]),
             Effect('dynamic_mode', [
                 Transition('mode', 0.00000001, start_value=None, end_value='dynamic'),
             ], trigger_run=[Trigger('audio/energy/intensity', 0.5)]),
         ], lights=['laser'], multiple=True),
         Program('laser2_mode', [
-            Effect('mode', [
-                Transition('mode', 0.00000001, start_value=None, end_value='manual'),
-            ], trigger_run=[True]),
             Effect('color_node', [
                 Transition('color', 0.0000001, start_value='RANDOM', end_value='START'),
                 Transition('node', 0.0000001, start_value='RANDOM', end_value='START'),
             ], trigger_run=[Trigger('audio/hits/bass', 0.9)]),
-        ], lights=['laser2']),
+        ], lights=['laser2'], multiple=True),
+
         # TODO: other multi light
         Program('uplights', [
             Effect('random_chase_fast', [
@@ -551,6 +560,9 @@ controller = SceneController([
         Program('autodim', [
             Effect('autodim', [
                 Transition('dim', 0.125, start_value=None, end_value=0),
+            ], trigger_run=[Trigger('audio/level/all', 0.05, below_threshold=True)]),
+            Effect('autodim_laser', [
+                Transition('mode', 0.125, start_value=None, end_value='off'),
             ], trigger_run=[Trigger('audio/level/all', 0.05, below_threshold=True)]),
         ], multiple=True),
     ])

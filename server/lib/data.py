@@ -102,7 +102,11 @@ class Transition(HasLightFilter, Dummy):
             if function:
                 mapping = function.get_mapping(light)
 
-        def _resolve_start_end(value):
+        def _resolve_start_end(value, start_value=None):
+            if value == 'START':
+                if start_value is None:
+                    raise RuntimeError("START is an invalid value for start_value, only applies to end_value")
+                return start_value
             if value == 'CURRENT' or value is None:
                 return light.get_raw_state(property, 0)
             elif value == 'DEFAULT' or value is True:
@@ -143,8 +147,8 @@ class Transition(HasLightFilter, Dummy):
                     return function.prev_mapping_from(light, mapped_state[self.property])
                 return (raw_state.get(self.property, 0) - 0.1) % 1
             elif value == 'RANDOM':
-                if mapping:
-                    return random.choice(list(mapping.keys()))
+                if mapping and function:
+                    return function.convert_to_raw(light, random.choice(list(mapping.keys())))
                 return random.random()
             elif str(value).startswith('@'):
                 value = data.get(value[1:], 0)
@@ -155,9 +159,16 @@ class Transition(HasLightFilter, Dummy):
                 else:
                     value = value[0]
                 return min(1, max(0, value))
-            return value
+            else:
+                try:
+                    return float(value)
+                except:
+                    value = str(value)
+                    if function:
+                        return function.convert_to_raw(light, value)
+                    return 0
         kwargs['start_value'] = _resolve_start_end(self.start_value)
-        kwargs['end_value'] = _resolve_start_end(self.end_value)
+        kwargs['end_value'] = _resolve_start_end(self.end_value, kwargs['start_value'])
 
         bpm_duration = get_bpm_duration(data, self.duration_beat)
         if bpm_duration:
@@ -309,8 +320,8 @@ class CircleMovementTransition(PanTiltSpreadMixin, MovementTransition):
         # multiply by radius to determine the difference to be applied to the starting position, producing pan/tilt values in degrees
         # divide by range to determine raw pan/tilt values
 
-        pan_deg = self.pan + (x * self.radius)
-        tilt_deg = self.tilt + (y * self.radius)
+        pan_deg = max(0, min(self.light.type.functions['pan'].meta['range_deg'], self.pan + (x * self.radius)))
+        tilt_deg = max(0, min(self.light.type.functions['tilt'].meta['range_deg'], self.tilt + (y * self.radius)))
 
         return {
             'pan': pan_deg / self.light.type.functions['pan'].meta['range_deg'],
@@ -357,8 +368,8 @@ class PointsMovementTransition(MovementTransition):
 
         mul, _ =self._calc_easing(data, percent)
 
-        pan_deg = ((x2 - x1) * mul) + x1
-        tilt_deg = ((y2 - y1) * mul) + y1
+        pan_deg = max(0, min(self.light.type.functions['pan'].meta['range_deg'], ((x2 - x1) * mul) + x1))
+        tilt_deg = max(0, min(self.light.type.functions['tilt'].meta['range_deg'], ((y2 - y1) * mul) + y1))
 
         return {
             'pan': pan_deg / self.light.type.functions['pan'].meta['range_deg'],

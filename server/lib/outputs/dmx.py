@@ -140,10 +140,14 @@ class DMXOutput(Output):
     def __init__(self, *args, **kwargs):
         # TODO: configurable
         self.dmx = DMXDevice()
+        self.last_render = None
+        self.render_s = 1 / 60.0  # TODO: configure fps
         super().__init__(*args, **kwargs)
 
     def process_lights(self, lights):
         for l in lights:
             if l.type.PROTOCOL == 'dmx':
                 self.dmx.update(l.get_dmx_state())
-        self.dmx.render()
+        if self.last_render is None or time.time() - self.last_render >= self.render_s:
+            self.last_render = time.time()
+            self.dmx.render()

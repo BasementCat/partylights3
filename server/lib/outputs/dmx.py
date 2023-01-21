@@ -7,6 +7,7 @@ import re
 from dmxpy.DmxPy import DmxPy
 
 from . import Output
+from lib import fps
 
 
 class DMXDevice:
@@ -26,7 +27,7 @@ class DMXDevice:
         self.find_device()
 
     def find_device(self):
-        if self.dmx or self.last_find is None or time.time() - self.last_find >= 1:
+        if not self.dmx or self.last_find is None or time.time() - self.last_find >= 1:
             self.last_find = time.time()
             try:
                 devfile = self._find_device_file(self.device)
@@ -141,13 +142,17 @@ class DMXOutput(Output):
         # TODO: configurable
         self.dmx = DMXDevice()
         self.last_render = None
-        self.render_s = 1 / 60.0  # TODO: configure fps
+        self.render_s = 1 / 70.0  # TODO: configure fps
         super().__init__(*args, **kwargs)
 
     def process_lights(self, lights):
+        fps.count('DMXProcess')
+        now = time.time()
+
         for l in lights:
             if l.type.PROTOCOL == 'dmx':
                 self.dmx.update(l.get_dmx_state())
-        if self.last_render is None or time.time() - self.last_render >= self.render_s:
-            self.last_render = time.time()
+        if self.last_render is None or now - self.last_render >= self.render_s:
+            self.last_render = now
             self.dmx.render()
+            fps.count('DMX')

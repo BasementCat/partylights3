@@ -1,6 +1,6 @@
 from queue import Queue, Empty
 
-from lib import HasThread, Named, Collected
+from lib import HasThread, Named, Collected, fps
 
 
 class Output(Named, Collected(), HasThread):

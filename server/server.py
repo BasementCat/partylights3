@@ -1,7 +1,7 @@
 import time
 import signal
 
-from lib import HasThread
+from lib import HasThread, fps
 from lib.inputs import Input
 from lib.inputs.osc import OSCServerInput
 from lib.inputs.osc.flavors import SynesthesiaOSCFlavor
@@ -28,5 +28,6 @@ try:
         data = Input.get_data(timeout=0.01)
         controller.run_triggers(data)
         Output.run_all(controller(data, lights), lights)
+        fps.count('main')
 finally:
     HasThread.stop_all()

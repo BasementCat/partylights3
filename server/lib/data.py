@@ -20,6 +20,14 @@ def get_bpm_duration(data, beats):
     return None
 
 
+def is_iterable(val):
+    try:
+        iter(val)
+        return True
+    except:
+        return False
+
+
 def HasTriggers(*names):
     class HasTriggersImpl:
         def __init__(self, *args, **kwargs):
@@ -234,15 +242,23 @@ class Transition(HasLightFilter, Dummy):
 
         _, conv = self._calc_easing(data, percent)
 
-        try:
-            iter(self.start_value)
-            # assume rgb color
-            s_hls = colorsys.rgb_to_hls(*self.start_value)
-            e_hls = colorsys.rgb_to_hls(*self.end_value)
+        start_iterable = is_iterable(self.start_value)
+        end_iterable = is_iterable(self.end_value)
+
+        if start_iterable or end_iterable:
+            # Assume rgb color
+            start = self.start_value
+            end = self.end_value
+
+            if not start_iterable:
+                start = [start for _ in range(3)]
+            if not end_iterable:
+                end = [end for _ in range(3)]
+
+            s_hls = colorsys.rgb_to_hls(*start)
+            e_hls = colorsys.rgb_to_hls(*end)
             o_hls = (conv(s_hls[i], e_hls[i]) for i in range(3))
             return colorsys.hls_to_rgb(*o_hls)
-        except:
-            pass
 
         return conv(self.start_value, self.end_value)
 
@@ -422,8 +438,8 @@ class SweepMovementTransition(PointsMovementTransition):
             raise ValueError("must provide x2 or y2")
         self.x1 = x1
         self.y1 = y1
-        self.x2 = x2 or x1
-        self.y2 = y2 or y1
+        self.x2 = x1 if x2 is None else x2
+        self.y2 = y1 if y2 is None else y2
         super().__init__(*args, **kwargs)
 
     def _calc_points(self):

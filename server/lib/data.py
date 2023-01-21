@@ -8,6 +8,20 @@ import easing_functions
 from . import Named, ListOf
 
 
+RGB_COLORS = {
+    'white': (1, 1, 1),
+    'red': (1, 0, 0),
+    'orange': (1, 0.647058824, 0),
+    'yellow': (1, 1, 0),
+    'green': (0, 1, 0),
+    'blue': (0, 0, 1),
+    'indigo': (0.5, 0, 0.5),
+    'violet': (0.933333333, 0.509803922, 0.933333333),
+    'cyan': (0, 1, 1),
+    'pink': (1, 0, 1),
+}
+
+
 def get_bpm_duration(data, beats):
     conf = data.get('audio/bpm/bpmconfidence')
     bpm = data.get('audio/bpm/bpm')
@@ -116,7 +130,7 @@ class Transition(HasLightFilter, Dummy):
                     raise RuntimeError("START is an invalid value for start_value, only applies to end_value")
                 return start_value
             if value == 'CURRENT' or value is None:
-                return light.get_raw_state(property, 0)
+                return light.get_raw_state(self.property, 0)
             elif value == 'DEFAULT' or value is True:
                 # TODO: resolve to default
                 return 0
@@ -158,6 +172,10 @@ class Transition(HasLightFilter, Dummy):
                 if mapping and function:
                     return function.convert_to_raw(light, random.choice(list(mapping.keys())))
                 return random.random()
+            elif value == 'RANDOMRGB':
+                # Generating a good random rgb color is hard, so don't do it
+                # return [random.random() for _ in range(3)]
+                return random.choice(list(RGB_COLORS.values()))
             elif str(value).startswith('@'):
                 value = data.get(value[1:], 0)
                 try:

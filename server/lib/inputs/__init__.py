@@ -3,7 +3,7 @@ import time
 from queue import Queue, Empty
 from threading import RLock
 
-from lib import HasThread
+from lib import HasThread, fps
 
 
 def calcdiff(new, old):
@@ -58,6 +58,7 @@ class Input(HasThread):
                     self.event_cache[event] = (args, old, diff, diff_p)
                 # return event, args, old, diff, diff_p
                 if timeout is not None and time.time() - start >= timeout:
+                    fps.count('InputTimeout')
                     break
             except Empty:
                 break

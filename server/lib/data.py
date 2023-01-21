@@ -81,7 +81,7 @@ class HasLightFilter:
 class Transition(HasLightFilter, Dummy):
     cycle_direction = {}
 
-    def __init__(self, property, duration, delay=None, start_value=None, end_value=None, duration_beat=None, delay_beat=None, easing='LinearInOut', spread=None, light=None, **kwargs):
+    def __init__(self, property, duration, delay=None, start_value=None, end_value=None, duration_beat=None, delay_beat=None, easing='LinearInOut', spread=None, light=None, keep=None, **kwargs):
         super().__init__(**kwargs)
         self.property = property
         self.duration = duration
@@ -98,6 +98,7 @@ class Transition(HasLightFilter, Dummy):
         self.easing = easing
         self.spread = spread or {}
         self.light = light
+        self.keep = keep
 
         if self.light:
             self.started_at = time.time()
@@ -221,15 +222,16 @@ class Transition(HasLightFilter, Dummy):
     def _copy(self, *args, **kwargs):
         return Transition(*args, **kwargs)
 
-    def for_light(self, index, light, data):
-        lights = self._filter_lights([light])
-        if lights:
-            light = lights[0]
-        else:
-            return None
-        kwargs = self._prep_to_copy(index, light, data)
-        kwargs = self._apply_spread(index, light, data, kwargs)
-        return self._copy(**kwargs)
+    def for_lights(self, lights, data):
+        lights = self._filter_lights(lights)
+        last_kwargs = None
+        for index, light in enumerate(lights):
+            kwargs = self._prep_to_copy(index, light, data)
+            kwargs = self._apply_spread(index, light, data, kwargs)
+            if self.keep and last_kwargs:
+                kwargs.update({k: last_kwargs.get(k, kwargs.get(k, 0)) for k in self.keep})
+            yield self._copy(**kwargs)
+            last_kwargs = kwargs
 
     @property
     def is_running(self):
@@ -492,10 +494,7 @@ class Effect(Named, HasLightFilter, HasTriggers('select', 'run'), ListOf(Transit
         lights = self._filter_lights(lights)
         transitions = []
         for t in self:
-            for i, l in enumerate(lights):
-                lt = t.for_light(i, l, data)
-                if lt:
-                    transitions.append(lt)
+            transitions += list(t.for_lights(lights, data))
         out = Effect(self.name, *transitions)
         out.lights = lights
         return out
@@ -564,6 +563,12 @@ class Program(Named, HasLightFilter, HasTriggers('run', 'stop', 'select', 'next'
                 self.play_next = True
 
     def _run_triggers__multi(self, data):
+        # Special case - allow running effects to expire before running triggers
+        # This can keep an effect that's continually triggered from dropping out for a frame
+        for k, v in list(self.running_effects.items()):
+            if not v.is_running:
+                del self.running_effects[k]
+
         for idx, effect in enumerate(self):
             for name in effect.run_triggers(data):
                 if name == 'run':
@@ -617,9 +622,10 @@ class Program(Named, HasLightFilter, HasTriggers('run', 'stop', 'select', 'next'
         return self.running_effect(data)
 
     def _call__multi(self, data, lights):
-        for k, v in list(self.running_effects.items()):
-            if not v.is_running:
-                del self.running_effects[k]
+        # Expired in run_triggers so don't do it here
+        # for k, v in list(self.running_effects.items()):
+        #     if not v.is_running:
+        #         del self.running_effects[k]
 
         if self.multiple_all:
             for i, e in enumerate(self):
